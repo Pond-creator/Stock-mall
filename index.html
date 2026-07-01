@@ -115,6 +115,7 @@
   #cAddSuggest .none{font-size:12px;color:var(--muted);padding:6px 4px}
   .chkitem{border-bottom:1px solid #eee}
   .chkitem.added{background:#fff7cc}
+  .chkitem.scanned{background:#d9f2df;border-left:4px solid #0b8043}
   .delBtn{border:0;background:#fde2e0;color:#c0392b;border-radius:7px;width:32px;height:32px;cursor:pointer;font-size:14px;font-weight:700;flex:0 0 auto}
   .overBtn{border:0;background:#fff2cc;color:#b9600f;border:1px solid #f1c232;border-radius:7px;height:32px;padding:0 8px;cursor:pointer;font-size:12px;font-weight:700;flex:0 0 auto;white-space:nowrap}
   .noteBtn{border:0;background:#eef1f5;border-radius:7px;width:32px;height:32px;cursor:pointer;font-size:14px;flex:0 0 auto}
@@ -828,7 +829,7 @@ function renderCheckList(){
     const c = CHK.counted[it.qr] ?? '';
     const note = CHK.notes[it.qr] || '';
     const search = ((it.desc||'') + ' ' + it.qr).toLowerCase();
-    return `<div class="chkitem ${it.added?'added':''}" data-search="${search}">
+    return `<div class="chkitem ${it.added?'added':(c!==''?'scanned':'')}" data-search="${search}">
       <div class="chkrow" id="row_${it.qr}">
         <div class="nm">${it.desc||it.qr}<b>${it.qr}</b></div>
         <div class="exp" title="ควรมี">${fmt(it.expected)}</div>
@@ -844,7 +845,7 @@ function renderCheckList(){
     </div>`;
   }).join('');
   wrap.querySelectorAll('input[data-qr]').forEach(inp=>{
-    inp.oninput = ()=>{ CHK.counted[inp.dataset.qr] = inp.value===''?undefined:Number(inp.value); updateSold(inp.dataset.qr); updateSum(); saveDraft(); };
+    inp.oninput = ()=>{ CHK.counted[inp.dataset.qr] = inp.value===''?undefined:Number(inp.value); const box=inp.closest('.chkitem'); if(box && !box.classList.contains('added')) box.classList.toggle('scanned', inp.value!==''); updateSold(inp.dataset.qr); updateSum(); saveDraft(); };
     inp.onfocus = ()=>inp.select();
     inp.addEventListener('click', ()=>inp.select());
   });
@@ -946,7 +947,7 @@ function onScan(txt){
   if(inp){ inp.value = CHK.counted[qr]; }
   updateSold(qr); updateSum(); saveDraft();
   const row = $('row_'+qr);
-  if(row){ row.classList.add('hit'); row.scrollIntoView({block:'center',behavior:'smooth'}); setTimeout(()=>row.classList.remove('hit'),700); }
+  if(row){ const box=row.closest('.chkitem'); if(box && !it.added) box.classList.add('scanned'); row.scrollIntoView({block:'center',behavior:'smooth'}); }
   $('scanMsg').textContent = '✓ '+(it.desc||qr)+' = '+CHK.counted[qr]+'  (กด "สแกน" อีกครั้งเพื่อชิ้นต่อไป)';
   stopScan(); // สแกน 1 ครั้ง = ปิดกล้องทันที กันบวกซ้ำ 100%
 }
