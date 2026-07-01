@@ -116,6 +116,8 @@
   .chkitem{border-bottom:1px solid #eee}
   .chkitem.added{background:#fff7cc}
   .chkitem.scanned{background:#d9f2df;border-left:4px solid #0b8043}
+  .fab{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:50;background:var(--blue);color:#fff;border:0;border-radius:30px;padding:14px 30px;font-size:16px;font-weight:700;box-shadow:0 4px 16px rgba(0,0,0,.28);cursor:pointer}
+  .fab:active{transform:translateX(-50%) scale(.95)}
   .delBtn{border:0;background:#fde2e0;color:#c0392b;border-radius:7px;width:32px;height:32px;cursor:pointer;font-size:14px;font-weight:700;flex:0 0 auto}
   .overBtn{border:0;background:#fff2cc;color:#b9600f;border:1px solid #f1c232;border-radius:7px;height:32px;padding:0 8px;cursor:pointer;font-size:12px;font-weight:700;flex:0 0 auto;white-space:nowrap}
   .noteBtn{border:0;background:#eef1f5;border-radius:7px;width:32px;height:32px;cursor:pointer;font-size:14px;flex:0 0 auto}
@@ -307,6 +309,7 @@
 
       <button class="bigbtn save" id="cSave">💾 บันทึกผลเช็ค</button>
       <div id="cSaveMsg" style="text-align:center;font-size:13px;margin:8px 0 20px;min-height:18px"></div>
+      <button id="fabScan" class="fab">📷 สแกน</button>
     </div>
   </div>
 
@@ -701,6 +704,7 @@ function setupCheck(){
   $('cLoad').onclick = loadExpected;
   $('cScanBtn').onclick = startScan;
   $('cStopBtn').onclick = stopScan;
+  $('fabScan').onclick = ()=>{ window.scrollTo({top:0,behavior:'smooth'}); startScan(); };
   $('cSave').onclick = saveCheck;
   $('cReset').onclick = resetCheck;
   // ปุ่มเปิดห้างใหม่ — เฉพาะ admin
@@ -915,6 +919,7 @@ function startScan(){
   $('scanMsg').textContent='';
   $('cScanBtn').classList.add('hidden');
   $('cStopBtn').classList.remove('hidden');
+  $('fabScan').classList.add('hidden'); // เปิดกล้องอยู่ = ซ่อนปุ่มลอย
   scanLocked=false; // เปิดกล้องใหม่ = พร้อมสแกน 1 ครั้ง
   qrScanner = new Html5Qrcode('reader', { formatsToSupport:[Html5QrcodeSupportedFormats.QR_CODE] });
   qrScanner.start({ facingMode:'environment' }, { fps:10, qrbox:220 },
@@ -923,6 +928,7 @@ function startScan(){
   ).catch(e=>{
     $('scanMsg').textContent='เปิดกล้องไม่ได้: '+e+' (ต้องใช้ผ่าน https)';
     $('cScanBtn').classList.remove('hidden'); $('cStopBtn').classList.add('hidden');
+    $('fabScan').classList.remove('hidden');
   });
 }
 function stopScan(after){
@@ -930,6 +936,7 @@ function stopScan(after){
   if(s){ s.stop().then(()=>{ try{s.clear();}catch(e){} if(after) after(); }).catch(()=>{ if(after) after(); }); }
   else if(after){ after(); }
   $('cScanBtn').classList.remove('hidden'); $('cStopBtn').classList.add('hidden');
+  $('fabScan').classList.remove('hidden'); // ปิดกล้อง = โชว์ปุ่มลอยกลับ
 }
 let lastScan='', lastScanT=0, scanLocked=false, scanMiss=0;
 function onScan(txt){
@@ -958,30 +965,51 @@ function onScan(txt){
 }
 
 // ====== บันทึก (POST no-cors) ======
+const hasCount = it => { const c=CHK.counted[it.qr]; return c!==undefined&&c!==null&&c!==''&&!isNaN(c); };
 function saveCheck(){
-  const counted = CHK.items.filter(it=>{ const c=CHK.counted[it.qr]; return c!==undefined&&c!==null&&!isNaN(c); });
-  if(!counted.length){ $('cSaveMsg').textContent='ยังไม่ได้กรอก/สแกนสินค้า'; return; }
+  // สินค้าใหม่ (เพิ่มเอง) ต้องกรอกจำนวนก่อน — ไม่งั้นบันทึกไม่ได้ เด้งไปหาให้แก้/ลบ
+  const badNew = CHK.items.find(it=>it.added && !hasCount(it));
+  if(badNew){
+    $('cSaveMsg').style.color='#c0392b';
+    $('cSaveMsg').textContent='⚠️ สินค้าใหม่ "'+(badNew.desc||badNew.qr)+'" ยังไม่กรอกจำนวน — กรอก หรือกดลบ (✕) ก่อนบันทึก';
+    const row=$('row_'+badNew.qr);
+    if(row) row.scrollIntoView({block:'center',behavior:'smooth'});
+    const inp=document.querySelector(`input[data-qr="${badNew.qr}"]`);
+    if(inp){ inp.focus(); inp.select(); }
+    return;
+  }
+  const counted = CHK.items.filter(hasCount);
+  if(!counted.length){ $('cSaveMsg').style.color=''; $('cSaveMsg').textContent='ยังไม่ได้กรอก/สแกนสินค้า'; return; }
   const total = CHK.items.length;
   const isBase = !CHK.hasBaseline;
   const skipped = total - counted.length;
   let msg = `${CHK.mall}\nกรอกแล้ว ${counted.length}/${total} รายการ`;
   let opt = { okText:'บันทึก' };
   if(isBase && skipped > 0){
-    // ตั้งเบส + ยังไม่ครบ → เตือนเข้ม
-    msg += `\n\n⚠️ ตั้งเบสครั้งแรก ควรนับให้ครบทุกตัว\nยังเหลืออีก ${skipped} รายการที่ยังไม่กรอก`;
+    // ตั้งเบส + ยังไม่ครบ → เตือนเข้ม (base ข้าม = ไม่เข้าเบส)
+    msg += `\n\n⚠️ ตั้งเบสครั้งแรก ควรนับให้ครบทุกตัว\nยังเหลืออีก ${skipped} รายการที่ยังไม่กรอก (จะถูกข้าม ไม่เข้าเบส)`;
     opt = { okText:'บันทึกเลย', icon:'⚠️', title:'ตั้งเบสยังไม่ครบ' };
   } else if(skipped > 0){
-    msg += `\n(อีก ${skipped} รายการที่ไม่กรอก = ข้าม ไม่นับ)`;
+    msg += `\n(อีก ${skipped} รายการที่ไม่กรอก = ใช้ค่าเดิม ขาย/หาย 0)`;
   }
   showConfirm(msg, doSave, opt);
 }
 
 function doSave(){
-  const counted = CHK.items.filter(it=>{ const c=CHK.counted[it.qr]; return c!==undefined&&c!==null&&!isNaN(c); });
+  const items = [];
+  CHK.items.forEach(it=>{
+    if(hasCount(it)){
+      items.push({ qr:it.qr, desc:it.desc, counted:Number(CHK.counted[it.qr]), note:(CHK.notes[it.qr]||'').trim() });
+    } else if(CHK.hasBaseline && !it.added){
+      // รอบตรวจ + ของเก่าไม่กรอก → ใช้ "ค่าที่ควรมี" (คงเหลือเดิม+จ่าย/รับ) = ขาย/หาย 0
+      items.push({ qr:it.qr, desc:it.desc, counted:Number(it.expected)||0, note:(CHK.notes[it.qr]||'').trim() });
+    }
+    // base + ไม่กรอก = ข้าม (ไม่เข้าเบส) ; added + ไม่กรอก = ถูกบล็อกไปแล้วใน saveCheck
+  });
   showLoading('กำลังบันทึก...');
   const payload = {
     user:CRED.user, pass:CRED.pass, mall:CHK.mall, date:$('cDate').value, note:'',
-    items: counted.map(it=>({ qr:it.qr, desc:it.desc, counted:CHK.counted[it.qr], note:(CHK.notes[it.qr]||'').trim() }))
+    items: items
   };
   const savedMall = CHK.mall;
   fetch(API_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(payload) })
