@@ -829,7 +829,7 @@ function renderCheckList(){
     const c = CHK.counted[it.qr] ?? '';
     const note = CHK.notes[it.qr] || '';
     const search = ((it.desc||'') + ' ' + it.qr).toLowerCase();
-    return `<div class="chkitem ${it.added?'added':(c!==''?'scanned':'')}" data-search="${search}">
+    return `<div class="chkitem ${it.added?'added':((it.scanned||c!=='')?'scanned':'')}" data-search="${search}">
       <div class="chkrow" id="row_${it.qr}">
         <div class="nm">${it.desc||it.qr}<b>${it.qr}</b></div>
         <div class="exp" title="ควรมี">${fmt(it.expected)}</div>
@@ -925,31 +925,36 @@ function startScan(){
     $('cScanBtn').classList.remove('hidden'); $('cStopBtn').classList.add('hidden');
   });
 }
-function stopScan(){
-  if(qrScanner){ qrScanner.stop().then(()=>qrScanner.clear()).catch(()=>{}); qrScanner=null; }
+function stopScan(after){
+  const s = qrScanner; qrScanner=null;
+  if(s){ s.stop().then(()=>{ try{s.clear();}catch(e){} if(after) after(); }).catch(()=>{ if(after) after(); }); }
+  else if(after){ after(); }
   $('cScanBtn').classList.remove('hidden'); $('cStopBtn').classList.add('hidden');
 }
 let lastScan='', lastScanT=0, scanLocked=false, scanMiss=0;
 function onScan(txt){
   const qr = String(txt).trim();
-  const now = Date.now();
   if(scanLocked) return; // สแกนไปแล้ว 1 ครั้ง รอปิด/เปิดกล้องใหม่
-  lastScan=qr; lastScanT=now; scanLocked=true;
+  lastScan=qr; lastScanT=Date.now(); scanLocked=true;
   let it = CHK.items.find(x=>x.qr===qr);
-  if(!it){ // QR ใหม่ ไม่อยู่ในรายการ → เพิ่มเข้าไป (ตั้งเบส)
+  if(!it){ // QR ใหม่ ไม่อยู่ในรายการ → เพิ่มเข้าไป (สินค้าใหม่)
     const fromPrice = PRODUCTS.find(x=>x.qr===qr);
     it = { qr:qr, desc:(fromPrice&&fromPrice.desc)||'(สินค้าใหม่)', expected:0, price:(fromPrice&&fromPrice.price)||0, added:true };
     CHK.items.unshift(it);
     renderCheckList();
+  } else {
+    it.scanned = true; // ของเก่า → มาร์คว่าสแกนเจอแล้ว (เขียวค้าง แม้ยังไม่กรอก)
   }
-  CHK.counted[qr] = (CHK.counted[qr]||0) + 1;
-  const inp = document.querySelector(`input[data-qr="${qr}"]`);
-  if(inp){ inp.value = CHK.counted[qr]; }
-  updateSold(qr); updateSum(); saveDraft();
-  const row = $('row_'+qr);
-  if(row){ const box=row.closest('.chkitem'); if(box && !it.added) box.classList.add('scanned'); row.scrollIntoView({block:'center',behavior:'smooth'}); }
-  $('scanMsg').textContent = '✓ '+(it.desc||qr)+' = '+CHK.counted[qr]+'  (กด "สแกน" อีกครั้งเพื่อชิ้นต่อไป)';
-  stopScan(); // สแกน 1 ครั้ง = ปิดกล้องทันที กันบวกซ้ำ 100%
+  // ❗ ไม่บวกจำนวนให้ — แค่มาร์คไฮไลต์ไว้ก่อน
+  { const row0=$('row_'+qr); if(row0){ const box=row0.closest('.chkitem'); if(box && !it.added) box.classList.add('scanned'); } }
+  $('scanMsg').textContent = '🔍 '+(it.desc||qr)+' — พิมพ์จำนวนที่นับได้';
+  // ปิดกล้องก่อน แล้วค่อยเลื่อนไปหา (จอนิ่งแล้ว จะไปหยุดตรงตัวนั้นเป๊ะ) + โฟกัสช่องกรอก
+  stopScan(()=>{
+    const row=$('row_'+qr);
+    if(row) row.scrollIntoView({block:'center',behavior:'smooth'});
+    const inp=document.querySelector(`input[data-qr="${qr}"]`);
+    if(inp){ inp.focus(); inp.select(); }
+  });
 }
 
 // ====== บันทึก (POST no-cors) ======
