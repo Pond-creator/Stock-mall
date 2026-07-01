@@ -914,10 +914,11 @@ function startScan(){
   $('scanMsg').textContent='';
   $('cScanBtn').classList.add('hidden');
   $('cStopBtn').classList.remove('hidden');
+  scanLocked=false; // เปิดกล้องใหม่ = พร้อมสแกน 1 ครั้ง
   qrScanner = new Html5Qrcode('reader', { formatsToSupport:[Html5QrcodeSupportedFormats.QR_CODE] });
   qrScanner.start({ facingMode:'environment' }, { fps:10, qrbox:220 },
     txt=>onScan(txt),
-    ()=>{ if(scanLocked && ++scanMiss>=3){ scanLocked=false; scanMiss=0; } } // ไม่เห็น QR 3 เฟรม = ถือว่าเอาออกจากกล้องแล้ว ปลดล็อก
+    ()=>{}
   ).catch(e=>{
     $('scanMsg').textContent='เปิดกล้องไม่ได้: '+e+' (ต้องใช้ผ่าน https)';
     $('cScanBtn').classList.remove('hidden'); $('cStopBtn').classList.add('hidden');
@@ -931,8 +932,8 @@ let lastScan='', lastScanT=0, scanLocked=false, scanMiss=0;
 function onScan(txt){
   const qr = String(txt).trim();
   const now = Date.now();
-  if(scanLocked && qr===lastScan) return; // ตัวเดิมยังจ่อกล้องอยู่ → นับครั้งเดียว จนกว่าจะเอาออกจากเฟรม
-  lastScan=qr; lastScanT=now; scanLocked=true; scanMiss=0;
+  if(scanLocked) return; // สแกนไปแล้ว 1 ครั้ง รอปิด/เปิดกล้องใหม่
+  lastScan=qr; lastScanT=now; scanLocked=true;
   let it = CHK.items.find(x=>x.qr===qr);
   if(!it){ // QR ใหม่ ไม่อยู่ในรายการ → เพิ่มเข้าไป (ตั้งเบส)
     const fromPrice = PRODUCTS.find(x=>x.qr===qr);
@@ -946,7 +947,8 @@ function onScan(txt){
   updateSold(qr); updateSum(); saveDraft();
   const row = $('row_'+qr);
   if(row){ row.classList.add('hit'); row.scrollIntoView({block:'center',behavior:'smooth'}); setTimeout(()=>row.classList.remove('hit'),700); }
-  $('scanMsg').textContent = '✓ '+(it.desc||qr)+' = '+CHK.counted[qr];
+  $('scanMsg').textContent = '✓ '+(it.desc||qr)+' = '+CHK.counted[qr]+'  (กด "สแกน" อีกครั้งเพื่อชิ้นต่อไป)';
+  stopScan(); // สแกน 1 ครั้ง = ปิดกล้องทันที กันบวกซ้ำ 100%
 }
 
 // ====== บันทึก (POST no-cors) ======
