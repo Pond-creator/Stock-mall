@@ -6,6 +6,12 @@
 <title>Stock Mall · Folio</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231f4e79'/%3E%3Cpath d='M22 40h56l-6-14H28z' fill='%23fff'/%3E%3Crect x='26' y='44' width='48' height='34' rx='3' fill='%23deebf7'/%3E%3Crect x='42' y='56' width='16' height='22' fill='%231f4e79'/%3E%3Crect x='30' y='48' width='9' height='9' fill='%231f4e79'/%3E%3Crect x='61' y='48' width='9' height='9' fill='%231f4e79'/%3E%3C/svg%3E">
 <meta name="theme-color" content="#1f4e79">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Stock Mall">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
@@ -908,10 +914,10 @@ function startScan(){
   $('scanMsg').textContent='';
   $('cScanBtn').classList.add('hidden');
   $('cStopBtn').classList.remove('hidden');
-  qrScanner = new Html5Qrcode('reader');
+  qrScanner = new Html5Qrcode('reader', { formatsToSupport:[Html5QrcodeSupportedFormats.QR_CODE] });
   qrScanner.start({ facingMode:'environment' }, { fps:10, qrbox:220 },
     txt=>onScan(txt),
-    ()=>{}
+    ()=>{ if(scanLocked && ++scanMiss>=3){ scanLocked=false; scanMiss=0; } } // ไม่เห็น QR 3 เฟรม = ถือว่าเอาออกจากกล้องแล้ว ปลดล็อก
   ).catch(e=>{
     $('scanMsg').textContent='เปิดกล้องไม่ได้: '+e+' (ต้องใช้ผ่าน https)';
     $('cScanBtn').classList.remove('hidden'); $('cStopBtn').classList.add('hidden');
@@ -921,12 +927,12 @@ function stopScan(){
   if(qrScanner){ qrScanner.stop().then(()=>qrScanner.clear()).catch(()=>{}); qrScanner=null; }
   $('cScanBtn').classList.remove('hidden'); $('cStopBtn').classList.add('hidden');
 }
-let lastScan='', lastScanT=0;
+let lastScan='', lastScanT=0, scanLocked=false, scanMiss=0;
 function onScan(txt){
   const qr = String(txt).trim();
   const now = Date.now();
-  if(qr===lastScan && now-lastScanT<1500) return; // กันสแกนซ้ำรัว
-  lastScan=qr; lastScanT=now;
+  if(scanLocked && qr===lastScan) return; // ตัวเดิมยังจ่อกล้องอยู่ → นับครั้งเดียว จนกว่าจะเอาออกจากเฟรม
+  lastScan=qr; lastScanT=now; scanLocked=true; scanMiss=0;
   let it = CHK.items.find(x=>x.qr===qr);
   if(!it){ // QR ใหม่ ไม่อยู่ในรายการ → เพิ่มเข้าไป (ตั้งเบส)
     const fromPrice = PRODUCTS.find(x=>x.qr===qr);
