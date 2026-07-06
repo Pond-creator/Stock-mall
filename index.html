@@ -454,8 +454,7 @@ function startApp(){
   // ช่วงวันที่ default = วันแรกของข้อมูล .. วันนี้ (ครอบรวมวันเช็คสต็อกด้วย)
   const ds = DATA.records.map(r=>r.d).sort();
   if(ds.length){ MIN_DATE = ds[0]; MAX_DATE = ds[ds.length-1]; }
-  $('fFrom').value = MIN_DATE || todayStr();
-  $('fTo').value = todayStr(); // ถึงวันนี้เสมอ ข้อมูลไม่ตกหล่น
+  resetRange(GRAN); // default = ตามโหมดที่เลือก (รายเดือน = เริ่มเดือนนี้ถึงวันนี้)
 
   // events — กรองทีเดียว อัปเดตทั้งการ์ด/กราฟ/แถบกระทบเช็ค พร้อมกัน
   const refreshAll = ()=>{ render(); loadMallStatus(sel.value); };
