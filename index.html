@@ -116,6 +116,9 @@
   .chkitem{border-bottom:1px solid #eee}
   .chkitem.added{background:#fff7cc}
   .chkitem.scanned{background:#d9f2df;border-left:4px solid #0b8043}
+  .pgbtn{border:1px solid var(--line);background:#fff;border-radius:7px;min-width:34px;height:34px;cursor:pointer;font-size:13px}
+  .pgbtn.on{background:var(--blue);color:#fff;border-color:var(--blue);font-weight:700}
+  .pgbtn:disabled{opacity:.4;cursor:default}
   .fab{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:50;background:var(--blue);color:#fff;border:0;border-radius:30px;padding:14px 30px;font-size:16px;font-weight:700;box-shadow:0 4px 16px rgba(0,0,0,.28);cursor:pointer}
   .fab:active{transform:translateX(-50%) scale(.95)}
   .delBtn{border:0;background:#fde2e0;color:#c0392b;border-radius:7px;width:32px;height:32px;cursor:pointer;font-size:14px;font-weight:700;flex:0 0 auto}
@@ -254,6 +257,12 @@
     <div class="cards" id="cards"></div>
 
     <div id="mallStatus"></div>
+
+    <div class="panel">
+      <h3>🕘 เช็คล่าสุด</h3>
+      <div class="tblwrap"><table id="recentTbl"></table></div>
+      <div id="recentPage" style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:10px"></div>
+    </div>
 
     <div class="panel">
       <h3 id="chartTitle">กราฟ จ่าย / รับ</h3>
@@ -477,7 +486,7 @@ function startApp(){
   // ปุ่มโหลดข้อมูลล่าสุด ใช้กับหน้ารายงานเป็นหลัก → โชว์เฉพาะคนที่เข้าหน้ารายงานได้
   $('btnRefresh').parentElement.style.display = allowed.indexOf('dash') >= 0 ? '' : 'none';
   switchView(allowed[0]); // เปิดหน้าแรกที่เข้าได้
-  if(allowed.indexOf('dash') >= 0) loadMallStatus(sel.value); // โหลดยอดกระทบเฉพาะถ้ามีหน้ารายงาน
+  if(allowed.indexOf('dash') >= 0){ loadMallStatus(sel.value); loadRecentChecks(); } // โหลดยอดกระทบ+เช็คล่าสุด เฉพาะถ้ามีหน้ารายงาน
 }
 
 // ====== โหลดข้อมูลล่าสุด (กดก่อนใช้งาน) ======
@@ -492,6 +501,7 @@ function refreshData(){
     const p = n => String(n).padStart(2,'0');
     $('refreshMsg').textContent = `✅ ข้อมูลล่าสุด ณ ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
     loadMallStatus($('fMall').value, true); // silent → loader ตัวเดิม หมุนรอบเดียว
+    loadRecentChecks();
   });
 }
 
@@ -651,6 +661,42 @@ function loadMallStatus(mall, silent){
       : `📦 กระทบเช็คล่าสุด (${fmtDate(res.lastCheckDate)})`;
     el.innerHTML = `<div class="panel"><h3>${title}</h3><div class="cards">${cards}</div></div>`;
   });
+}
+
+// ====== ตาราง "เช็คล่าสุด" (ทุกห้าง) หน้ารายงาน — แบ่งหน้า 10 รายการ/หน้า ======
+let RECENT = [], RECENT_PAGE = 1;
+const RECENT_PAGE_SIZE = 10;
+function loadRecentChecks(){
+  api({user:CRED.user, pass:CRED.pass, action:'recentchecks'}, (err,res)=>{
+    if(err || !res.ok){ return; }
+    RECENT = res.checks || [];
+    RECENT_PAGE = 1;
+    renderRecentChecks();
+  });
+}
+function renderRecentChecks(){
+  const tbl = $('recentTbl'), pg = $('recentPage');
+  if(!RECENT.length){ tbl.innerHTML = '<tr><td style="padding:10px;color:var(--muted);font-size:13px">ยังไม่มีการเช็คสต็อก</td></tr>'; pg.innerHTML=''; return; }
+  const totalPages = Math.max(1, Math.ceil(RECENT.length / RECENT_PAGE_SIZE));
+  if(RECENT_PAGE > totalPages) RECENT_PAGE = totalPages;
+  const start = (RECENT_PAGE-1) * RECENT_PAGE_SIZE;
+  const rows = RECENT.slice(start, start + RECENT_PAGE_SIZE);
+  const showMoney = rows.some(r=>r.soldVal!==undefined);
+  let h = `<tr><th>วันที่</th><th>ห้าง</th><th>ประเภท</th><th>ผู้เช็ค</th><th>รายการ</th><th>ขาย/หาย</th>${showMoney?'<th>มูลค่า</th>':''}</tr>`;
+  rows.forEach(r=>{
+    const typeBadge = r.type==='base' ? '<span class="badge base">ตั้งเบส</span>' : '<span class="badge check">รอบตรวจ</span>';
+    h += `<tr><td>${fmtDate(r.date)}</td><td>${r.mall}</td><td>${typeBadge}</td><td>${r.user||''}</td><td>${fmt(r.itemCount)}</td><td style="color:${r.soldQty>0?'#c0392b':'inherit'}">${fmt(r.soldQty)}</td>${showMoney?`<td>${fmtM(r.soldVal||0)}</td>`:''}</tr>`;
+  });
+  tbl.innerHTML = h;
+  // ปุ่มแบ่งหน้า (โชว์ไม่เกิน 7 ปุ่ม รอบๆ หน้าปัจจุบัน)
+  let pgHtml = '';
+  const addBtn = (n) => { pgHtml += `<button class="pgbtn ${n===RECENT_PAGE?'on':''}" data-pg="${n}">${n}</button>`; };
+  pgHtml += `<button class="pgbtn" data-pg="${Math.max(1,RECENT_PAGE-1)}" ${RECENT_PAGE===1?'disabled':''}>‹</button>`;
+  let lo = Math.max(1, RECENT_PAGE-2), hi = Math.min(totalPages, lo+4); lo = Math.max(1, hi-4);
+  for(let n=lo; n<=hi; n++) addBtn(n);
+  pgHtml += `<button class="pgbtn" data-pg="${Math.min(totalPages,RECENT_PAGE+1)}" ${RECENT_PAGE===totalPages?'disabled':''}>›</button>`;
+  pg.innerHTML = pgHtml;
+  pg.querySelectorAll('[data-pg]').forEach(b=>{ b.onclick = ()=>{ RECENT_PAGE = Number(b.dataset.pg); renderRecentChecks(); }; });
 }
 
 // ============================================================
