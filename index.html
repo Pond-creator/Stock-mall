@@ -666,8 +666,9 @@ function loadMallStatus(mall, silent){
 let RECENT = [], RECENT_PAGE = 1;
 const RECENT_PAGE_SIZE = 10;
 function loadRecentChecks(){
+  $('recentTbl').innerHTML = '<tr><td style="padding:10px;color:var(--muted);font-size:13px">กำลังโหลด...</td></tr>';
   api({user:CRED.user, pass:CRED.pass, action:'recentchecks'}, (err,res)=>{
-    if(err || !res.ok){ return; }
+    if(err || !res.ok){ $('recentTbl').innerHTML = `<tr><td style="padding:10px;color:#c0392b;font-size:13px">โหลดไม่สำเร็จ: ${err||res.error||''}</td></tr>`; return; }
     RECENT = res.checks || [];
     RECENT_PAGE = 1;
     renderRecentChecks();
