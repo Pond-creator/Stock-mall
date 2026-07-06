@@ -116,6 +116,7 @@
   .chkitem{border-bottom:1px solid #eee}
   .chkitem.added{background:#fff7cc}
   .chkitem.scanned{background:#d9f2df;border-left:4px solid #0b8043}
+  .recentRow:hover{background:#eef4fb}
   .pgbtn{border:1px solid var(--line);background:#fff;border-radius:7px;min-width:34px;height:34px;cursor:pointer;font-size:13px}
   .pgbtn.on{background:var(--blue);color:#fff;border-color:var(--blue);font-weight:700}
   .pgbtn:disabled{opacity:.4;cursor:default}
@@ -685,9 +686,19 @@ function renderRecentChecks(){
   let h = `<tr><th>วันที่</th><th>ห้าง</th><th>ประเภท</th><th>ผู้เช็ค</th><th>รายการ</th><th>ขาย/หาย</th>${showMoney?'<th>มูลค่า</th>':''}</tr>`;
   rows.forEach(r=>{
     const typeBadge = r.type==='base' ? '<span class="badge base">ตั้งเบส</span>' : '<span class="badge check">รอบตรวจ</span>';
-    h += `<tr><td>${fmtDate(r.date)}</td><td>${r.mall}</td><td>${typeBadge}</td><td>${r.user||''}</td><td>${fmt(r.itemCount)}</td><td style="color:${r.soldQty>0?'#c0392b':'inherit'}">${fmt(r.soldQty)}</td>${showMoney?`<td>${fmtM(r.soldVal||0)}</td>`:''}</tr>`;
+    h += `<tr class="recentRow" data-mall="${r.mall}" style="cursor:pointer"><td>${fmtDate(r.date)}</td><td>${r.mall}</td><td>${typeBadge}</td><td>${r.user||''}</td><td>${fmt(r.itemCount)}</td><td style="color:${r.soldQty>0?'#c0392b':'inherit'}">${fmt(r.soldQty)}</td>${showMoney?`<td>${fmtM(r.soldVal||0)}</td>`:''}</tr>`;
   });
   tbl.innerHTML = h;
+  tbl.querySelectorAll('.recentRow').forEach(tr=>{
+    tr.onclick = ()=>{
+      const allowed = document.querySelectorAll('#nav button:not([style*="display: none"])');
+      const hasHist = Array.from(allowed).some(b=>b.dataset.v==='hist');
+      if(!hasHist) return; // role นี้เข้าหน้ารายงานเช็คไม่ได้
+      switchView('hist');
+      $('hMall').value = tr.dataset.mall;
+      loadHistory();
+    };
+  });
   // ปุ่มแบ่งหน้า (โชว์ไม่เกิน 7 ปุ่ม รอบๆ หน้าปัจจุบัน)
   let pgHtml = '';
   const addBtn = (n) => { pgHtml += `<button class="pgbtn ${n===RECENT_PAGE?'on':''}" data-pg="${n}">${n}</button>`; };
