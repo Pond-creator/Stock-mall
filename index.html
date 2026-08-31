@@ -117,6 +117,12 @@
   .chkitem.added{background:#fff7cc}
   .chkitem.scanned{background:#d9f2df;border-left:4px solid #0b8043}
   .recentRow:hover{background:#eef4fb}
+  /* กล่องชวนติดตั้งแอป */
+  #installBox:empty{display:none}
+  #installBox{margin:0 0 14px;padding:11px 13px;border-radius:10px;font-size:12.5px;line-height:1.7;background:#e8f2fb;border:1px solid #b9d8f2;color:#1f4e79;text-align:left}
+  #installBox b{display:block;font-size:13.5px;margin-bottom:3px}
+  #installBox .ibtn{display:block;width:100%;margin-top:9px;padding:11px;border:0;border-radius:9px;background:var(--blue);color:#fff;font-size:14px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none}
+  #installBox .steps{margin:6px 0 0;padding-left:18px}
   .btnhint{font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:8px;padding:8px 10px;background:#f7f9fc;border:1px solid var(--line);border-radius:8px}
   .btnhint b{color:#333}
   .pgbtn{border:1px solid var(--line);background:#fff;border-radius:7px;min-width:34px;height:34px;cursor:pointer;font-size:13px}
@@ -206,6 +212,7 @@
 <div id="login">
   <h2>🏬 Stock Mall</h2>
   <p>รายงานสต็อกหน้าห้าง</p>
+  <div id="installBox"></div>
   <label>Username</label>
   <input id="u" autocomplete="username" placeholder="ชื่อผู้ใช้">
   <label>Password</label>
@@ -218,7 +225,7 @@
 <div id="app" class="hidden">
   <header>
     <h1>🏬 Stock Mall</h1>
-    <div class="who"><b id="whoName"></b><span id="whoRole"></span> · <a href="#" id="logout" style="color:#fff">ออก</a></div>
+    <div class="who"><b id="whoName"></b><span id="whoRole"></span> · <a href="#" id="installLink" class="hidden" style="color:#fff">📲 ติดตั้ง</a> · <a href="#" id="logout" style="color:#fff">ออก</a></div>
   </header>
   <nav id="nav">
     <button data-v="dash" class="on">📊 รายงาน</button>
@@ -353,6 +360,83 @@
 <script>
 // ====== ตั้งค่า: ใส่ URL ของ GAS Web App (ลงท้าย /exec) ======
 const API_URL = 'https://script.google.com/macros/s/AKfycbyN_hjC_W4Sf9RBst8cnZvEuHlHDal5d4_OD7Uo1-27xcW6ktK2Fz6whoX2CUMz57gi/exec';
+
+// ============================================================
+// ====== ติดตั้งลงหน้าจอเครื่อง (PWA) ======
+// LINE/Facebook เปิดเว็บในแอปตัวเอง ซึ่ง "ติดตั้งไม่ได้" → ต้องพาไปเปิดในเบราว์เซอร์จริงก่อน
+// ============================================================
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); deferredPrompt = e; renderInstallUI(); });
+window.addEventListener('appinstalled', ()=>{ deferredPrompt = null; renderInstallUI(); });
+
+function envInfo(){
+  const ua = navigator.userAgent || '';
+  return {
+    inApp: /\bLine\/|FBAN|FBAV|Instagram|Messenger|MicroMessenger/i.test(ua), // เบราว์เซอร์ในแอปแชท
+    isIOS: /iPad|iPhone|iPod/.test(ua),
+    standalone: (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true
+  };
+}
+
+function renderInstallUI(){
+  const box = document.getElementById('installBox');
+  const link = document.getElementById('installLink');
+  if(!box) return;
+  const e = envInfo();
+
+  // ติดตั้งแล้ว / เปิดจากไอคอนบนเครื่องอยู่ → ไม่ต้องชวนอีก
+  if(e.standalone){ box.innerHTML=''; if(link) link.classList.add('hidden'); return; }
+
+  if(e.inApp){
+    // อยู่ในเบราว์เซอร์ของ LINE → ติดตั้งไม่ได้ ต้องเปิดในเบราว์เซอร์จริง
+    const u = new URL(location.href);
+    u.searchParams.set('openExternalBrowser','1');   // LINE จะเปิดด้วยเบราว์เซอร์เครื่องให้
+    box.innerHTML = `<b>📲 ติดตั้งลงหน้าจอเครื่อง</b>
+      ตอนนี้เปิดอยู่ในแอป LINE ซึ่งติดตั้งไม่ได้ — กดปุ่มด้านล่างเพื่อเปิดในเบราว์เซอร์ก่อน แล้วจะติดตั้งได้
+      <a class="ibtn" href="${u.href}" target="_blank" rel="noopener">เปิดในเบราว์เซอร์ →</a>`;
+    if(link) link.classList.add('hidden');
+    return;
+  }
+
+  if(deferredPrompt){
+    // Android / Chrome / Edge บนคอม → กดติดตั้งได้เลย
+    box.innerHTML = `<b>📲 ติดตั้งลงหน้าจอเครื่อง</b>
+      ใช้งานง่ายกว่า เปิดเต็มจอ ไม่มีแถบเบราว์เซอร์
+      <button class="ibtn" id="installBtn">ติดตั้งแอป</button>`;
+    document.getElementById('installBtn').onclick = doInstall;
+    if(link){ link.classList.remove('hidden'); link.onclick = ev=>{ ev.preventDefault(); doInstall(); }; }
+    return;
+  }
+
+  if(e.isIOS){
+    // iPhone/iPad → ติดตั้งอัตโนมัติไม่ได้ ต้องบอกวิธี (Safari เท่านั้น)
+    box.innerHTML = `<b>📲 ติดตั้งลงหน้าจอ iPhone</b>
+      <ol class="steps">
+        <li>กดปุ่ม <b>แชร์</b> (สี่เหลี่ยมมีลูกศรขึ้น) ด้านล่างจอ</li>
+        <li>เลื่อนหา <b>"เพิ่มไปยังหน้าจอโฮม"</b></li>
+        <li>กด <b>เพิ่ม</b></li>
+      </ol>`;
+    if(link) link.classList.add('hidden');
+    return;
+  }
+
+  box.innerHTML = '';
+  if(link) link.classList.add('hidden');
+}
+
+async function doInstall(){
+  if(!deferredPrompt) return;
+  deferredPrompt.prompt();
+  try{ await deferredPrompt.userChoice; }catch(e){}
+  deferredPrompt = null;
+  renderInstallUI();
+}
+
+// ลงทะเบียน service worker (จำเป็นเพื่อให้เบราว์เซอร์เสนอปุ่มติดตั้ง + โหลดไอคอนเร็วขึ้น)
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+}
+renderInstallUI();
 
 // ====== JSONP (เลี่ยง CORS) ======
 function api(params, cb){
