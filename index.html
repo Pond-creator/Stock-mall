@@ -411,12 +411,19 @@ function loadAuth(){
 }
 function clearAuth(){ try{ localStorage.removeItem(AUTH_KEY); }catch(e){} }
 
+// ช่วงวันเริ่มต้น (รายเดือน = 1 ถึงวันนี้) — คำนวณฝั่งเว็บ ใช้ส่งไปกับคำสั่ง init ตั้งแต่ครั้งแรก
+function defaultRange(){
+  const n=new Date(), p=x=>String(x).padStart(2,'0');
+  return { from:`${n.getFullYear()}-${p(n.getMonth()+1)}-01`, to: todayStr() };
+}
+
 function doLogin(){
   const user = $('u').value.trim(), pass = $('p').value;
   if(!user || !pass){ $('loginErr').textContent='กรอก username/password'; return; }
   $('loginErr').textContent='';
   showLoading('กำลังเข้าสู่ระบบ...');
-  api({user, pass, action:'data'}, (err, res)=>{
+  const r = defaultRange();
+  api({user, pass, action:'init', from:r.from, to:r.to}, (err, res)=>{
     hideLoading();
     if(err){ $('loginErr').textContent=err; return; }
     if(!res.ok){ $('loginErr').textContent=res.error||'เข้าสู่ระบบไม่สำเร็จ'; return; }
@@ -430,7 +437,8 @@ function tryAutoLogin(){
   const a = loadAuth();
   if(!a) return;
   showLoading('กำลังเข้าสู่ระบบ...');
-  api({user:a.user, pass:a.pass, action:'data'}, (err, res)=>{
+  const r = defaultRange();
+  api({user:a.user, pass:a.pass, action:'init', from:r.from, to:r.to}, (err, res)=>{
     hideLoading();
     if(err || !res || !res.ok){ clearAuth(); return; } // หมดอายุ/ผิด → ให้ล็อกอินใหม่
     CRED = {user:a.user, pass:a.pass}; DATA = res; saveAuth(a.user, a.pass); // ต่ออายุ
@@ -450,12 +458,22 @@ function startApp(){
   // ห้าง dropdown
   const sel = $('fMall');
   sel.innerHTML = '<option value="__ALL__">ทุกห้าง (รวม)</option>' +
-    DATA.malls.map(m=>`<option value="${m}">${m}</option>`).join('');
+    (DATA.malls||[]).map(m=>`<option value="${m}">${m}</option>`).join('');
 
   // ช่วงวันที่ default = วันแรกของข้อมูล .. วันนี้ (ครอบรวมวันเช็คสต็อกด้วย)
-  const ds = DATA.records.map(r=>r.d).sort();
+  const ds = (DATA.records||[]).map(r=>r.d).sort();
   if(ds.length){ MIN_DATE = ds[0]; MAX_DATE = ds[ds.length-1]; }
   resetRange(GRAN); // default = ตามโหมดที่เลือก (รายเดือน = เริ่มเดือนนี้ถึงวันนี้)
+
+  // ข้อมูลที่มากับคำสั่ง init รอบเดียว (ไม่ต้องยิง API เพิ่ม)
+  if(DATA.mallList) MALL_LIST = DATA.mallList;
+  if(DATA.products) PRODUCTS = DATA.products;
+  // ตาข่ายกันพัง: ถ้า GAS ยังเป็นเวอร์ชันเก่า (ไม่รู้จัก action init) → ดึงแบบเดิมอัตโนมัติ
+  const legacyGAS = !DATA.mallList;
+  if(legacyGAS){
+    refreshMallDropdowns();
+    api({user:CRED.user, pass:CRED.pass, action:'products'}, (e,r)=>{ if(!e && r && r.ok) PRODUCTS = r.products || []; });
+  }
 
   // events — กรองทีเดียว อัปเดตทั้งการ์ด/กราฟ/แถบกระทบเช็ค พร้อมกัน
   const refreshAll = ()=>{ render(); loadMallStatus(sel.value); };
@@ -486,21 +504,48 @@ function startApp(){
   // ปุ่มโหลดข้อมูลล่าสุด ใช้กับหน้ารายงานเป็นหลัก → โชว์เฉพาะคนที่เข้าหน้ารายงานได้
   $('btnRefresh').parentElement.style.display = allowed.indexOf('dash') >= 0 ? '' : 'none';
   switchView(allowed[0]); // เปิดหน้าแรกที่เข้าได้
-  if(allowed.indexOf('dash') >= 0) loadDashInit(); // โหลดยอดกระทบ+เช็คล่าสุด (คำสั่งเดียว) เฉพาะถ้ามีหน้ารายงาน
+  // ยอดกระทบ + เช็คล่าสุด มากับคำสั่ง init แล้ว → แสดงได้เลย ไม่ต้องยิง API ซ้ำ
+  if(allowed.indexOf('dash') >= 0){
+    if(!legacyGAS){ applyDashData(DATA.mallStatus, DATA.recent); }
+    else {
+      // GAS เวอร์ชันเก่า → ดึงข้อมูลรายงาน + ยอดกระทบ แบบเดิม (ช้ากว่า แต่ใช้งานได้ปกติ)
+      showLoading('กำลังโหลดข้อมูล...');
+      api({user:CRED.user, pass:CRED.pass, action:'data'}, (e,r)=>{
+        hideLoading();
+        if(!e && r && r.ok){
+          DATA = r;
+          sel.innerHTML = '<option value="__ALL__">ทุกห้าง (รวม)</option>' +
+            (DATA.malls||[]).map(m=>`<option value="${m}">${m}</option>`).join('');
+          render();
+        }
+        loadDashInit();
+      });
+    }
+  }
+}
+
+// แสดงยอดกระทบ + ตารางเช็คล่าสุด จากข้อมูลที่โหลดมาแล้ว
+function applyDashData(mallStatus, recent){
+  if(mallStatus) renderMallStatusBox(mallStatus, '__ALL__');
+  if(recent){ RECENT = recent.checks || []; RECENT_PAGE = 1; renderRecentChecks(); }
 }
 
 // ====== โหลดข้อมูลล่าสุด (กดก่อนใช้งาน) ======
 function refreshData(){
   if(!CRED){ location.reload(); return; }
   showLoading('กำลังโหลดข้อมูลล่าสุด...');
-  api({user:CRED.user, pass:CRED.pass, action:'data'}, (err,res)=>{
-    if(err || !res || !res.ok){ hideLoading(); $('refreshMsg').textContent='โหลดไม่สำเร็จ ลองใหม่'; return; }
+  // คำสั่งเดียวได้ครบ: ข้อมูลรายงาน + ยอดกระทบ + เช็คล่าสุด + รายชื่อห้าง + สินค้า
+  api({user:CRED.user, pass:CRED.pass, action:'init', from:$('fFrom').value, to:$('fTo').value}, (err,res)=>{
+    hideLoading();
+    if(err || !res || !res.ok){ $('refreshMsg').textContent='โหลดไม่สำเร็จ ลองใหม่'; return; }
     DATA = res;
+    if(DATA.mallList){ MALL_LIST = DATA.mallList; renderMallDropdowns(); }
+    if(DATA.products) PRODUCTS = DATA.products;
     render();
+    applyDashData(DATA.mallStatus, DATA.recent);
     const now = new Date();
     const p = n => String(n).padStart(2,'0');
     $('refreshMsg').textContent = `✅ ข้อมูลล่าสุด ณ ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
-    loadDashInit(true); // silent → loader ตัวเดิม หมุนรอบเดียว
   });
 }
 
@@ -568,7 +613,7 @@ function render(){
   const money = DATA.canSeeMoney;
 
   // filter
-  const recs = DATA.records.filter(r=>
+  const recs = (DATA.records||[]).filter(r=>
     (mall==='__ALL__'||r.m===mall) &&
     (!from || r.d>=from) && (!to || r.d<=to)
   );
@@ -778,7 +823,7 @@ function addProduct(qr){
 
 function setupCheck(){
   $('cDate').value = todayStr();
-  refreshMallDropdowns();
+  renderMallDropdowns();  // ใช้รายชื่อห้างที่มากับคำสั่ง init (ไม่ต้องยิง API เพิ่ม)
   $('cLoad').onclick = loadExpected;
   $('cScanBtn').onclick = startScan;
   $('cStopBtn').onclick = stopScan;
@@ -790,21 +835,26 @@ function setupCheck(){
   $('amCancel').onclick = ()=> $('addMallModal').classList.remove('show');
   $('amOk').onclick = submitAddMall;
   $('cSearch').oninput = ()=>{ filterCheckList(); renderAddSuggest(); };
-  // โหลดรายการสินค้า (Price) ไว้ค้นหาเพิ่มสินค้า
-  api({user:CRED.user, pass:CRED.pass, action:'products'}, (err,res)=>{ if(!err && res && res.ok) PRODUCTS = res.products || []; });
+  // รายการสินค้า (Price) สำหรับค้นหาเพิ่มสินค้า — มากับคำสั่ง init แล้ว (PRODUCTS)
 }
 
-// โหลดรายชื่อห้าง → เติม dropdown ทั้งเช็คสต็อก (cMall) และรายงานเช็ค (hMall)
+// เติม dropdown ห้าง (เช็คสต็อก cMall + รายงานเช็ค hMall) จาก MALL_LIST ที่มีอยู่แล้ว
+function renderMallDropdowns(){
+  if(!MALL_LIST.length){ $('cMall').innerHTML='<option>โหลดรายชื่อไม่ได้</option>'; return; }
+  // เรียง: ห้างที่เปิดแล้ว (ready) อยู่บนสุด → ที่ยังไม่เปิดอยู่ล่าง
+  const sorted = MALL_LIST.slice().sort((a,b)=> (b.ready?1:0)-(a.ready?1:0));
+  $('cMall').innerHTML = '<option value="">— เลือกห้าง —</option>' +
+    sorted.map(m=>`<option value="${m.name}" ${m.ready?'':'disabled'}>${m.name}${m.ready?'':'  (ยังไม่เปิด)'}</option>`).join('');
+  if($('hMall')) $('hMall').innerHTML = '<option value="">— เลือกห้าง —</option>' +
+    MALL_LIST.filter(m=>m.ready).map(m=>`<option value="${m.name}">${m.name}</option>`).join('');
+}
+
+// โหลดรายชื่อห้างใหม่จากเซิร์ฟเวอร์ (ใช้หลังเพิ่มห้างใหม่เท่านั้น)
 function refreshMallDropdowns(cb){
   api({user:CRED.user, pass:CRED.pass, action:'malllist'}, (err,res)=>{
     if(err || !res || !res.ok){ $('cMall').innerHTML='<option>โหลดรายชื่อไม่ได้</option>'; if(cb)cb(); return; }
     MALL_LIST = res.malls;
-    // เรียง: ห้างที่เปิดแล้ว (ready) อยู่บนสุด → ที่ยังไม่เปิดอยู่ล่าง
-    const sorted = MALL_LIST.slice().sort((a,b)=> (b.ready?1:0)-(a.ready?1:0));
-    $('cMall').innerHTML = '<option value="">— เลือกห้าง —</option>' +
-      sorted.map(m=>`<option value="${m.name}" ${m.ready?'':'disabled'}>${m.name}${m.ready?'':'  (ยังไม่เปิด)'}</option>`).join('');
-    if($('hMall')) $('hMall').innerHTML = '<option value="">— เลือกห้าง —</option>' +
-      MALL_LIST.filter(m=>m.ready).map(m=>`<option value="${m.name}">${m.name}</option>`).join('');
+    renderMallDropdowns();
     if(cb) cb();
   });
 }
