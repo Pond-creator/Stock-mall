@@ -300,7 +300,7 @@
       </div>
       <div class="btnhint">
         <div><b>โหลดรายการสินค้า</b> = ดึงรายการของห้างที่เลือก มาเริ่มนับ</div>
-        <div>🔄 <b>เริ่มใหม่</b> = ล้างตัวเลขที่กรอกไปทั้งหมดของรอบนี้ (รวมที่เซฟร่างไว้) แล้วเริ่มนับใหม่ตั้งแต่เลือกห้าง — <span style="color:#c0392b">ที่ยังไม่กดบันทึกจะหาย</span></div>
+        <div>🔄 <b>เริ่มใหม่</b> = ล้างตัวเลขที่กรอกไปทั้งหมดของรอบนี้ (รวมที่เซฟร่างไว้) แล้วเริ่มนับใหม่ตั้งแต่เลือกห้าง — <span style="color:#c0392b"><b>ใช้ในกรณีที่อยากนับใหม่ อย่ากดผิด</b> ที่ยังไม่กดบันทึกจะหาย</span></div>
       </div>
       <div id="cStatus" style="font-size:13px;color:var(--muted);margin-top:8px;text-align:center"></div>
     </div>
@@ -835,7 +835,17 @@ function setupCheck(){
   $('cStopBtn').onclick = stopScan;
   $('fabScan').onclick = ()=>{ window.scrollTo({top:0,behavior:'smooth'}); startScan(); };
   $('cSave').onclick = saveCheck;
-  $('cReset').onclick = resetCheck;
+  // เริ่มใหม่ = ล้างงานที่กรอกค้าง → ต้องถามยืนยันเสมอ (กันกดผิดแล้วงานหาย)
+  $('cReset').onclick = ()=>{
+    const filled = (CHK.items||[]).filter(hasCount).length;
+    let msg = CHK.mall ? `ห้าง: ${CHK.mall}\n\n` : '';
+    msg += 'จะล้างการนับรอบนี้ทั้งหมด แล้วเริ่มใหม่ตั้งแต่เลือกห้าง';
+    msg += filled > 0
+      ? `\n\n⚠️ ตัวเลขที่กรอกไว้แล้ว ${filled} รายการ จะหายทั้งหมด\n(รวมร่างที่เซฟอัตโนมัติ — กู้คืนไม่ได้)`
+      : '\n\n(ตอนนี้ยังไม่ได้กรอกตัวเลขอะไรไว้)';
+    msg += '\n\nยืนยันเริ่มนับใหม่ไหม?';
+    showConfirm(msg, resetCheck, { icon:'🔄', title:'เริ่มนับใหม่?', okText:'ใช่ ล้างแล้วเริ่มใหม่' });
+  };
   // ปุ่มเปิดห้างใหม่ — เฉพาะ admin
   if(DATA.role === 'admin'){ $('cAddMall').classList.remove('hidden'); $('cAddMall').onclick = openAddMall; }
   $('amCancel').onclick = ()=> $('addMallModal').classList.remove('show');
