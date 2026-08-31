@@ -152,6 +152,7 @@
   .sum .box{flex:1;min-width:120px;background:#fff;border-radius:10px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);border-left:5px solid var(--blue)}
   .sum .box.sold{border-color:#c0392b}
   .sum .box .l{font-size:12px;color:var(--muted)} .sum .box .v{font-size:20px;font-weight:800}
+  .sum .box .s{font-size:11px;color:var(--muted);margin-top:2px}
 
   /* รายงานเช็ค */
   .roundcard{background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:12px;overflow:hidden}
@@ -1153,7 +1154,8 @@ function updateSum(){
     if(diff>0){ soldQty+=diff; soldVal+=diff*(it.price||0); }  // ขาด = ขายไป
     else if(diff<0){ overQty+=(-diff); }                       // เกิน = พบเพิ่ม
   });
-  let html = `<div class="box"><div class="l">นับแล้ว</div><div class="v">${countedItems}/${CHK.items.length}</div></div>
+  const total = CHK.items.length, waiting = total - countedItems;
+  let html = `<div class="box"><div class="l">รอนับ</div><div class="v"${waiting===0?' style="color:#0b8043"':''}>${fmt(waiting)}</div><div class="s">${waiting===0?'✓ นับครบแล้ว':`นับแล้ว ${fmt(countedItems)} จาก ${fmt(total)} รายการ`}</div></div>
     <div class="box sold"><div class="l">ขายไป (ประมาณ)</div><div class="v">${fmt(soldQty)}</div></div>`;
   if(CHK.money) html += `<div class="box sold"><div class="l">มูลค่าขาย</div><div class="v">${fmtM(soldVal)}</div></div>`;
   if(overQty>0) html += `<div class="box" style="border-color:#0b8043"><div class="l">พบเกิน (+)</div><div class="v" style="color:#0b8043">${fmt(overQty)}</div></div>`;
