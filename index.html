@@ -486,7 +486,7 @@ function startApp(){
   // ปุ่มโหลดข้อมูลล่าสุด ใช้กับหน้ารายงานเป็นหลัก → โชว์เฉพาะคนที่เข้าหน้ารายงานได้
   $('btnRefresh').parentElement.style.display = allowed.indexOf('dash') >= 0 ? '' : 'none';
   switchView(allowed[0]); // เปิดหน้าแรกที่เข้าได้
-  if(allowed.indexOf('dash') >= 0){ loadMallStatus(sel.value); loadRecentChecks(); } // โหลดยอดกระทบ+เช็คล่าสุด เฉพาะถ้ามีหน้ารายงาน
+  if(allowed.indexOf('dash') >= 0) loadDashInit(); // โหลดยอดกระทบ+เช็คล่าสุด (คำสั่งเดียว) เฉพาะถ้ามีหน้ารายงาน
 }
 
 // ====== โหลดข้อมูลล่าสุด (กดก่อนใช้งาน) ======
@@ -500,8 +500,7 @@ function refreshData(){
     const now = new Date();
     const p = n => String(n).padStart(2,'0');
     $('refreshMsg').textContent = `✅ ข้อมูลล่าสุด ณ ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
-    loadMallStatus($('fMall').value, true); // silent → loader ตัวเดิม หมุนรอบเดียว
-    loadRecentChecks();
+    loadDashInit(true); // silent → loader ตัวเดิม หมุนรอบเดียว
   });
 }
 
@@ -643,23 +642,45 @@ function loadMallStatus(mall, silent){
   if(!silent) showLoading('กำลังโหลดยอดกระทบเช็ค...'); // silent = ใช้ loader เดิม (ไม่หมุนซ้ำ)
   api({user:CRED.user, pass:CRED.pass, action:'mallstatus', mall:mall, from:$('fFrom').value, to:$('fTo').value}, (err,res)=>{
     hideLoading();
-    if(err || !res.ok){ el.innerHTML=''; return; }
-    if(!res.hasCheck){
-      el.innerHTML = mall==='__ALL__'
-        ? '<div class="panel" style="font-size:13px;color:var(--muted)">📦 ยังไม่มีห้างไหนเช็คสต็อก — ยอดคงเหลือด้านบนเป็นตามบัญชี (จ่าย−รับ)</div>'
-        : '<div class="panel" style="font-size:13px;color:var(--muted)">📦 ห้างนี้ยังไม่เคยเช็คสต็อก — ยอดคงเหลือด้านบนเป็นตามบัญชี (จ่าย−รับ)</div>';
-      return;
+    renderMallStatusBox(err?null:res, mall);
+  });
+}
+function renderMallStatusBox(res, mall){
+  const el = $('mallStatus');
+  if(!res || !res.ok){ el.innerHTML=''; return; }
+  if(!res.hasCheck){
+    el.innerHTML = (mall==='__ALL__'||res.all)
+      ? '<div class="panel" style="font-size:13px;color:var(--muted)">📦 ยังไม่มีห้างไหนเช็คสต็อก — ยอดคงเหลือด้านบนเป็นตามบัญชี (จ่าย−รับ)</div>'
+      : '<div class="panel" style="font-size:13px;color:var(--muted)">📦 ห้างนี้ยังไม่เคยเช็คสต็อก — ยอดคงเหลือด้านบนเป็นตามบัญชี (จ่าย−รับ)</div>';
+    return;
+  }
+  let cards = `<div class="card bal"><div class="lbl">คงเหลือจริง</div><div class="val">${fmt(res.expectedQty)}</div><div class="sub">ชิ้น (หักการนับแล้ว)</div></div>
+    <div class="card sold" style="border-color:#c0392b"><div class="lbl">ขาย/หาย (จากการเช็ค)</div><div class="val" style="color:#c0392b">${fmt(res.soldQty)}</div><div class="sub">ชิ้น (ประมาณ)</div></div>`;
+  if(res.expectedVal!==undefined){
+    cards += `<div class="card money"><div class="lbl">มูลค่าคงเหลือจริง</div><div class="val">${fmtM(res.expectedVal)}</div><div class="sub">บาท</div></div>
+      <div class="card money" style="border-color:#c0392b"><div class="lbl">มูลค่าขาย/หาย สะสม</div><div class="val" style="color:#c0392b">${fmtM(res.soldVal)}</div><div class="sub">บาท</div></div>`;
+  }
+  const title = res.all
+    ? `📦 กระทบเช็ค — รวมทุกห้าง (เช็คแล้ว ${res.mallChecked} ห้าง)`
+    : `📦 กระทบเช็คล่าสุด (${fmtDate(res.lastCheckDate)})`;
+  el.innerHTML = `<div class="panel"><h3>${title}</h3><div class="cards">${cards}</div></div>`;
+}
+
+// ====== โหลดรวมตอนเข้าเว็บครั้งแรก/กดโหลดข้อมูลล่าสุด (กระทบเช็ครวม + เช็คล่าสุด) ======
+// ยิงคำสั่งเดียว (dashinit) แทนการยิง mallstatus(__ALL__) + recentchecks แยกกัน 2 รอบ
+// เพราะทั้งคู่อ่านชีท Base-out/Base-in ก้อนใหญ่ซ้ำกัน — รวมเป็นคำสั่งเดียวจะเร็วขึ้นมาก
+function loadDashInit(silent){
+  if(!silent) showLoading('กำลังโหลดยอดกระทบเช็ค...'); // silent = ใช้ loader ของฟังก์ชันที่เรียกอยู่แล้ว (กันหมุนซ้อน)
+  api({user:CRED.user, pass:CRED.pass, action:'dashinit', from:$('fFrom').value, to:$('fTo').value}, (err,res)=>{
+    if(!silent) hideLoading();
+    if(err || !res || !res.ok){
+      // เผื่อ GAS ยังไม่ได้ deploy เวอร์ชันที่มี action นี้ → ใช้วิธีเดิม (ยิงแยก 2 คำสั่ง) กันหน้าเว็บพัง
+      loadMallStatus($('fMall').value, silent); loadRecentChecks(); return;
     }
-    let cards = `<div class="card bal"><div class="lbl">คงเหลือจริง</div><div class="val">${fmt(res.expectedQty)}</div><div class="sub">ชิ้น (หักการนับแล้ว)</div></div>
-      <div class="card sold" style="border-color:#c0392b"><div class="lbl">ขาย/หาย (จากการเช็ค)</div><div class="val" style="color:#c0392b">${fmt(res.soldQty)}</div><div class="sub">ชิ้น (ประมาณ)</div></div>`;
-    if(res.expectedVal!==undefined){
-      cards += `<div class="card money"><div class="lbl">มูลค่าคงเหลือจริง</div><div class="val">${fmtM(res.expectedVal)}</div><div class="sub">บาท</div></div>
-        <div class="card money" style="border-color:#c0392b"><div class="lbl">มูลค่าขาย/หาย สะสม</div><div class="val" style="color:#c0392b">${fmtM(res.soldVal)}</div><div class="sub">บาท</div></div>`;
-    }
-    const title = res.all
-      ? `📦 กระทบเช็ค — รวมทุกห้าง (เช็คแล้ว ${res.mallChecked} ห้าง)`
-      : `📦 กระทบเช็คล่าสุด (${fmtDate(res.lastCheckDate)})`;
-    el.innerHTML = `<div class="panel"><h3>${title}</h3><div class="cards">${cards}</div></div>`;
+    renderMallStatusBox(res.mallStatus, '__ALL__');
+    RECENT = (res.recent && res.recent.checks) || [];
+    RECENT_PAGE = 1;
+    renderRecentChecks();
   });
 }
 
