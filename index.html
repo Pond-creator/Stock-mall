@@ -123,6 +123,7 @@
   #installBox b{display:block;font-size:13.5px;margin-bottom:3px}
   #installBox .ibtn{display:block;width:100%;margin-top:9px;padding:11px;border:0;border-radius:9px;background:var(--blue);color:#fff;font-size:14px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none}
   #installBox .steps{margin:6px 0 0;padding-left:18px}
+  #installBox .idismiss{display:block;margin-top:8px;text-align:center;font-size:11.5px;color:#5b7fa6;text-decoration:underline}
   .btnhint{font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:8px;padding:8px 10px;background:#f7f9fc;border:1px solid var(--line);border-radius:8px}
   .btnhint b{color:#333}
   .pgbtn{border:1px solid var(--line);background:#fff;border-radius:7px;min-width:34px;height:34px;cursor:pointer;font-size:13px}
@@ -366,8 +367,12 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbyN_hjC_W4Sf9RBst8cnZvE
 // LINE/Facebook เปิดเว็บในแอปตัวเอง ซึ่ง "ติดตั้งไม่ได้" → ต้องพาไปเปิดในเบราว์เซอร์จริงก่อน
 // ============================================================
 let deferredPrompt = null;
+const HIDE_INSTALL_KEY = 'sm_hide_install';   // จำว่าเครื่องนี้ติดตั้งแล้ว/ไม่อยากให้เตือนอีก
+function installHidden(){ try{ return localStorage.getItem(HIDE_INSTALL_KEY)==='1'; }catch(e){ return false; } }
+function hideInstallForever(){ try{ localStorage.setItem(HIDE_INSTALL_KEY,'1'); }catch(e){} renderInstallUI(); }
+
 window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); deferredPrompt = e; renderInstallUI(); });
-window.addEventListener('appinstalled', ()=>{ deferredPrompt = null; renderInstallUI(); });
+window.addEventListener('appinstalled', ()=>{ deferredPrompt = null; hideInstallForever(); }); // ติดตั้งเสร็จ = ไม่ต้องเตือนอีก
 
 function envInfo(){
   const ua = navigator.userAgent || '';
@@ -384,8 +389,8 @@ function renderInstallUI(){
   if(!box) return;
   const e = envInfo();
 
-  // ติดตั้งแล้ว / เปิดจากไอคอนบนเครื่องอยู่ → ไม่ต้องชวนอีก
-  if(e.standalone){ box.innerHTML=''; if(link) link.classList.add('hidden'); return; }
+  // ติดตั้งแล้ว / เปิดจากไอคอนบนเครื่อง / เคยกด "ไม่ต้องแสดงอีก" → ไม่ต้องชวนอีก
+  if(e.standalone || installHidden()){ box.innerHTML=''; if(link) link.classList.add('hidden'); return; }
 
   if(e.inApp){
     // อยู่ในเบราว์เซอร์ของ LINE → ติดตั้งไม่ได้ ต้องเปิดในเบราว์เซอร์จริง
@@ -393,7 +398,9 @@ function renderInstallUI(){
     u.searchParams.set('openExternalBrowser','1');   // LINE จะเปิดด้วยเบราว์เซอร์เครื่องให้
     box.innerHTML = `<b>📲 ติดตั้งลงหน้าจอเครื่อง</b>
       ตอนนี้เปิดอยู่ในแอป LINE ซึ่งติดตั้งไม่ได้ — กดปุ่มด้านล่างเพื่อเปิดในเบราว์เซอร์ก่อน แล้วจะติดตั้งได้
-      <a class="ibtn" href="${u.href}" target="_blank" rel="noopener">เปิดในเบราว์เซอร์ →</a>`;
+      <a class="ibtn" href="${u.href}" target="_blank" rel="noopener">เปิดในเบราว์เซอร์ →</a>
+      <a href="#" class="idismiss">ติดตั้งแล้ว — ไม่ต้องแสดงอีก</a>`;
+    bindDismiss();
     if(link) link.classList.add('hidden');
     return;
   }
@@ -402,8 +409,10 @@ function renderInstallUI(){
     // Android / Chrome / Edge บนคอม → กดติดตั้งได้เลย
     box.innerHTML = `<b>📲 ติดตั้งลงหน้าจอเครื่อง</b>
       ใช้งานง่ายกว่า เปิดเต็มจอ ไม่มีแถบเบราว์เซอร์
-      <button class="ibtn" id="installBtn">ติดตั้งแอป</button>`;
+      <button class="ibtn" id="installBtn">ติดตั้งแอป</button>
+      <a href="#" class="idismiss">ไม่ต้องแสดงอีก</a>`;
     document.getElementById('installBtn').onclick = doInstall;
+    bindDismiss();
     if(link){ link.classList.remove('hidden'); link.onclick = ev=>{ ev.preventDefault(); doInstall(); }; }
     return;
   }
@@ -415,13 +424,21 @@ function renderInstallUI(){
         <li>กดปุ่ม <b>แชร์</b> (สี่เหลี่ยมมีลูกศรขึ้น) ด้านล่างจอ</li>
         <li>เลื่อนหา <b>"เพิ่มไปยังหน้าจอโฮม"</b></li>
         <li>กด <b>เพิ่ม</b></li>
-      </ol>`;
+      </ol>
+      <a href="#" class="idismiss">ติดตั้งแล้ว — ไม่ต้องแสดงอีก</a>`;
+    bindDismiss();
     if(link) link.classList.add('hidden');
     return;
   }
 
   box.innerHTML = '';
   if(link) link.classList.add('hidden');
+}
+
+// ผูกปุ่ม "ไม่ต้องแสดงอีก" (จำไว้ในเครื่องนี้ ไม่ขึ้นกวนอีก)
+function bindDismiss(){
+  const a = document.querySelector('#installBox .idismiss');
+  if(a) a.onclick = ev=>{ ev.preventDefault(); hideInstallForever(); };
 }
 
 async function doInstall(){
