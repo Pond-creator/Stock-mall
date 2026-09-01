@@ -131,6 +131,8 @@
   .pgbtn:disabled{opacity:.4;cursor:default}
   .fab{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:50;background:var(--blue);color:#fff;border:0;border-radius:30px;padding:14px 30px;font-size:16px;font-weight:700;box-shadow:0 4px 16px rgba(0,0,0,.28);cursor:pointer}
   .fab:active{transform:translateX(-50%) scale(.95)}
+  .zeroBtn{border:1px solid #d0d7de;background:#f6f8fa;color:#c0392b;border-radius:7px;height:32px;padding:0 7px;cursor:pointer;font-size:11px;font-weight:700;flex:0 0 auto;white-space:nowrap}
+  .zeroBtn:active{background:#fde2e0}
   .delBtn{border:0;background:#fde2e0;color:#c0392b;border-radius:7px;width:32px;height:32px;cursor:pointer;font-size:14px;font-weight:700;flex:0 0 auto}
   .overBtn{border:0;background:#fff2cc;color:#b9600f;border:1px solid #f1c232;border-radius:7px;height:32px;padding:0 8px;cursor:pointer;font-size:12px;font-weight:700;flex:0 0 auto;white-space:nowrap}
   .noteBtn{border:0;background:#eef1f5;border-radius:7px;width:32px;height:32px;cursor:pointer;font-size:14px;flex:0 0 auto}
@@ -143,6 +145,15 @@
   .chkrow .exp{width:54px;text-align:center;color:var(--muted)}
   .chkrow input{width:62px;padding:7px;text-align:center;border:1px solid var(--line);border-radius:7px;font-size:15px}
   .chkrow.hit{background:#fff7cc}
+  /* จอมือถือแคบ: บีบคอลัมน์ให้ชื่อสินค้ามีที่พอ (มีปุ่ม "ไม่เจอ" เพิ่มมา) */
+  @media(max-width:430px){
+    .chkrow{gap:5px;padding:8px 5px}
+    .chkrow .exp{width:30px}
+    .chkrow input{width:50px;padding:7px 4px}
+    .chkrow .sold{width:36px;font-size:12px}
+    .zeroBtn{padding:0 5px;font-size:10px;height:30px}
+    .noteBtn,.delBtn{width:30px;height:30px}
+  }
   .chkrow .sold{width:60px;text-align:center;font-weight:700}
   .sold.pos{color:#c0392b} .sold.zero{color:#0b8043}
   .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}
@@ -326,7 +337,7 @@
 
       <div class="panel">
         <h3>รายการนับ <span id="cType"></span></h3>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">กรอก "นับได้จริง" หรือสแกน QR (+1 ต่อครั้ง) · 📝 = หมายเหตุรายตัว</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">กรอกจำนวนที่ <b>นับได้จริง</b> · <b style="color:#c0392b">ไปดูแล้วไม่เจอของ → กดปุ่ม "ไม่เจอ"</b> (ใส่ 0) · ปล่อยว่าง = ยังไม่ได้ไปนับ · 📝 = หมายเหตุรายตัว</div>
         <input id="cSearch" placeholder="🔍 ค้นหาสินค้า (ชื่อ / รหัส) — พิมพ์เพื่อเพิ่มสินค้า">
         <div id="cAddSuggest"></div>
         <div id="cList"></div>
@@ -1085,6 +1096,7 @@ function renderCheckList(){
         <div class="nm">${it.desc||it.qr}<b>${it.qr}</b></div>
         <div class="exp" title="ควรมี">${fmt(it.expected)}</div>
         <input type="number" inputmode="numeric" data-qr="${it.qr}" value="${c}" placeholder="นับ">
+        <button class="zeroBtn ${c!==''?'hidden':''}" data-zero="${it.qr}" title="ไปดูแล้วไม่เจอของ = ใส่ 0">ไม่เจอ</button>
         <div class="sold" id="sold_${it.qr}"></div>
         ${it.over?`<button class="overBtn" data-over="${it.qr}" title="รอบก่อนนับเกิน">⚠️${it.over}</button>`:''}
         ${it.added?`<button class="delBtn" data-del="${it.qr}" title="ลบ (กรณีเพิ่มผิด)">✕</button>`:''}
@@ -1096,9 +1108,25 @@ function renderCheckList(){
     </div>`;
   }).join('');
   wrap.querySelectorAll('input[data-qr]').forEach(inp=>{
-    inp.oninput = ()=>{ CHK.counted[inp.dataset.qr] = inp.value===''?undefined:Number(inp.value); const box=inp.closest('.chkitem'); if(box && !box.classList.contains('added')) box.classList.toggle('scanned', inp.value!==''); updateSold(inp.dataset.qr); updateSum(); saveDraft(); };
+    inp.oninput = ()=>{
+      CHK.counted[inp.dataset.qr] = inp.value===''?undefined:Number(inp.value);
+      const box=inp.closest('.chkitem'); if(box && !box.classList.contains('added')) box.classList.toggle('scanned', inp.value!=='');
+      const zb = wrap.querySelector(`[data-zero="${inp.dataset.qr}"]`); if(zb) zb.classList.toggle('hidden', inp.value!=='');  // กรอกแล้วซ่อนปุ่ม "ไม่เจอ"
+      updateSold(inp.dataset.qr); updateSum(); saveDraft();
+    };
     inp.onfocus = ()=>inp.select();
     inp.addEventListener('click', ()=>inp.select());
+  });
+  // ปุ่ม "ไม่เจอ" = ไปดูแล้วไม่มีของจริง → ใส่ 0 (ต่างจากช่องว่าง = ยังไม่ได้ไปนับ)
+  wrap.querySelectorAll('[data-zero]').forEach(b=>{
+    b.onclick = ()=>{
+      const q = b.dataset.zero;
+      CHK.counted[q] = 0;
+      const inp = wrap.querySelector(`input[data-qr="${q}"]`); if(inp) inp.value = 0;
+      const box = b.closest('.chkitem'); if(box && !box.classList.contains('added')) box.classList.add('scanned');
+      b.classList.add('hidden');
+      updateSold(q); updateSum(); saveDraft();
+    };
   });
   wrap.querySelectorAll('[data-over]').forEach(b=>{
     b.onclick = ()=>{
@@ -1238,7 +1266,9 @@ function saveCheck(){
     msg += `\n\n⚠️ ตั้งเบสครั้งแรก ควรนับให้ครบทุกตัว\nยังเหลืออีก ${skipped} รายการที่ยังไม่กรอก (จะถูกข้าม ไม่เข้าเบส)`;
     opt = { okText:'บันทึกเลย', icon:'⚠️', title:'ตั้งเบสยังไม่ครบ' };
   } else if(skipped > 0){
-    msg += `\n(อีก ${skipped} รายการที่ไม่กรอก = ใช้ค่าเดิม ขาย/หาย 0)`;
+    // เตือนให้ชัด: ช่องว่าง = "ยังไม่ได้ไปนับ" ≠ "ไปดูแล้วไม่เจอ" (ต้องใส่ 0)
+    msg += `\n\n⚠️ ยังไม่กรอกอีก ${skipped} รายการ\nระบบจะถือว่า "ยังไม่ได้ไปนับ" → ของยังอยู่ครบ (ขาย/หาย 0)\n\n❗ ถ้าไปดูแล้ว "ไม่เจอของ" จริง ต้องกดปุ่ม "ไม่เจอ" (ใส่ 0)\nไม่งั้นของที่หายไปจะไม่ถูกบันทึก`;
+    opt = { okText:'บันทึกเลย', icon:'⚠️', title:'ยังกรอกไม่ครบ' };
   }
   showConfirm(msg, doSave, opt);
 }
