@@ -750,14 +750,19 @@ function render(){
 
   // totals
   let T={outSku:new Set(),outQty:0,outVal:0,inSku:new Set(),inQty:0,inVal:0};
-  recs.forEach(r=>{ if(r.t==='out'){T.outSku.add(r.qr);T.outQty+=r.q;T.outVal+=r.v||0;} else {T.inSku.add(r.qr);T.inQty+=r.q;T.inVal+=r.v||0;} });
+  const netByQr={};   // นับ "รุ่นที่ยังมีของเหลือ" (จ่าย−รับ > 0)
+  recs.forEach(r=>{
+    if(r.t==='out'){T.outSku.add(r.qr);T.outQty+=r.q;T.outVal+=r.v||0; netByQr[r.qr]=(netByQr[r.qr]||0)+r.q;}
+    else           {T.inSku.add(r.qr); T.inQty+=r.q; T.inVal+=r.v||0;  netByQr[r.qr]=(netByQr[r.qr]||0)-r.q;}
+  });
   const balQty=T.outQty-T.inQty, balVal=T.outVal-T.inVal;
+  const balSku=Object.keys(netByQr).filter(q=>netByQr[q]>0).length;
 
   // cards
   let cards=`
     <div class="card out"><div class="lbl">จ่าย (เข้าห้าง)</div><div class="val">${fmt(T.outQty)}</div><div class="sub">${T.outSku.size} SKU</div></div>
     <div class="card in"><div class="lbl">รับ (คืนคลัง)</div><div class="val">${fmt(T.inQty)}</div><div class="sub">${T.inSku.size} SKU</div></div>
-    <div class="card bal"><div class="lbl">คงเหลือ (จ่าย−รับ)</div><div class="val">${fmt(balQty)}</div><div class="sub">ชิ้น</div></div>`;
+    <div class="card bal"><div class="lbl">คงเหลือ (จ่าย−รับ)</div><div class="val">${fmt(balQty)}</div><div class="sub">ชิ้น · ${fmt(balSku)} SKU</div></div>`;
   if(money){
     cards+=`<div class="card money"><div class="lbl">มูลค่าคงเหลือ</div><div class="val">${fmtM(balVal)}</div><div class="sub">บาท</div></div>`;
   }
@@ -818,8 +823,10 @@ function renderMallStatusBox(res, mall){
       : '<div class="panel" style="font-size:13px;color:var(--muted)">📦 ห้างนี้ยังไม่เคยเช็คสต็อก — ยอดคงเหลือด้านบนเป็นตามบัญชี (จ่าย−รับ)</div>';
     return;
   }
-  let cards = `<div class="card bal"><div class="lbl">คงเหลือจริง</div><div class="val">${fmt(res.expectedQty)}</div><div class="sub">ชิ้น (หักการนับแล้ว)</div></div>
-    <div class="card sold" style="border-color:#c0392b"><div class="lbl">ขาย/หาย (จากการเช็ค)</div><div class="val" style="color:#c0392b">${fmt(res.soldQty)}</div><div class="sub">ชิ้น (ประมาณ)</div></div>`;
+  const exSku = res.expectedSku!==undefined ? ` · ${fmt(res.expectedSku)} SKU` : '';
+  const sdSku = res.soldSku!==undefined ? ` · ${fmt(res.soldSku)} SKU` : '';
+  let cards = `<div class="card bal"><div class="lbl">คงเหลือจริง</div><div class="val">${fmt(res.expectedQty)}</div><div class="sub">ชิ้น (หักการนับแล้ว)${exSku}</div></div>
+    <div class="card sold" style="border-color:#c0392b"><div class="lbl">ขาย/หาย (จากการเช็ค)</div><div class="val" style="color:#c0392b">${fmt(res.soldQty)}</div><div class="sub">ชิ้น (ประมาณ)${sdSku}</div></div>`;
   if(res.expectedVal!==undefined){
     cards += `<div class="card money"><div class="lbl">มูลค่าคงเหลือจริง</div><div class="val">${fmtM(res.expectedVal)}</div><div class="sub">บาท</div></div>
       <div class="card money" style="border-color:#c0392b"><div class="lbl">มูลค่าขาย/หาย สะสม</div><div class="val" style="color:#c0392b">${fmtM(res.soldVal)}</div><div class="sub">บาท</div></div>`;
