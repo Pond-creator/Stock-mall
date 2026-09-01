@@ -23,7 +23,9 @@
     --line:#d0d7de; --muted:#666;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  body{margin:0;font-family:-apple-system,'Segoe UI',Tahoma,sans-serif;background:#f4f6f9;color:#222;font-size:15px}
+  /* overscroll-behavior-y:contain = ปิด "ปัดลงเพื่อรีเฟรช" ของมือถือ (กันเผลอปัดแล้วข้อมูลนับหาย) */
+  html{overscroll-behavior-y:contain}
+  body{margin:0;font-family:-apple-system,'Segoe UI',Tahoma,sans-serif;background:#f4f6f9;color:#222;font-size:15px;overscroll-behavior-y:contain}
   header{background:var(--blue);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5}
   header h1{font-size:17px;margin:0;font-weight:700}
   header .who{font-size:12px;opacity:.9}
@@ -124,6 +126,13 @@
   #installBox .ibtn{display:block;width:100%;margin-top:9px;padding:11px;border:0;border-radius:9px;background:var(--blue);color:#fff;font-size:14px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none}
   #installBox .steps{margin:6px 0 0;padding-left:18px}
   #installBox .idismiss{display:block;margin-top:8px;text-align:center;font-size:11.5px;color:#5b7fa6;text-decoration:underline}
+  /* เมนู ☰ ในหน้าเช็คสต็อก — เก็บปุ่มเสี่ยง (เริ่มใหม่) ไว้ข้างใน กันกดโดน */
+  .menuwrap{position:relative;flex:0 0 auto}
+  .menupop{position:absolute;right:0;top:calc(100% + 6px);z-index:60;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.16);min-width:230px;overflow:hidden}
+  .menupop button{display:block;width:100%;text-align:left;border:0;background:#fff;padding:12px 14px;font-size:14px;font-weight:700;cursor:pointer;border-bottom:1px solid #f0f0f0}
+  .menupop button:last-child{border-bottom:0}
+  .menupop button:active{background:#eef4fb}
+  .menupop button span{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:2px}
   .btnhint{font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:8px;padding:8px 10px;background:#f7f9fc;border:1px solid var(--line);border-radius:8px}
   .btnhint b{color:#333}
   .pgbtn{border:1px solid var(--line);background:#fff;border-radius:7px;min-width:34px;height:34px;cursor:pointer;font-size:13px}
@@ -313,14 +322,19 @@
           <input id="cDate" type="date" autocomplete="off">
         </div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="bigbtn ghost" id="cLoad" style="flex:2;min-width:140px" title="ดึงรายการสินค้าของห้างที่เลือก มาเริ่มนับ">โหลดรายการสินค้า</button>
-        <button class="bigbtn ghost" id="cReset" style="flex:1;min-width:90px" title="ล้างตัวเลขที่กรอกทั้งหมดของรอบนี้ เพื่อเริ่มนับใหม่">🔄 เริ่มใหม่</button>
-        <button class="bigbtn ghost hidden" id="cAddMall" style="flex:1;min-width:130px;margin:0;border:1px dashed #0b8043;color:#0b8043" title="เพิ่มห้างใหม่เข้าระบบ (เฉพาะผู้ดูแล)">➕ เปิดห้าง</button>
+      <div style="display:flex;gap:8px;align-items:stretch">
+        <button class="bigbtn ghost" id="cLoad" style="flex:1;margin:0" title="ดึงรายการสินค้าของห้างที่เลือก มาเริ่มนับ">โหลดรายการสินค้า</button>
+        <div class="menuwrap">
+          <button class="bigbtn ghost" id="cMenuBtn" style="margin:0;width:52px;padding:0;font-size:20px" title="เมนูเพิ่มเติม">☰</button>
+          <div class="menupop hidden" id="cMenu">
+            <button data-act="reset">🔄 เริ่มใหม่ <span>ล้างการนับรอบนี้ทั้งหมด</span></button>
+            <button data-act="addmall" class="hidden" id="cAddMall">➕ เปิดห้าง <span>เพิ่มห้างใหม่เข้าระบบ</span></button>
+          </div>
+        </div>
       </div>
       <div class="btnhint">
         <div><b>โหลดรายการสินค้า</b> = ดึงรายการของห้างที่เลือก มาเริ่มนับ</div>
-        <div>🔄 <b>เริ่มใหม่</b> = ล้างตัวเลขที่กรอกไปทั้งหมดของรอบนี้ (รวมที่เซฟร่างไว้) แล้วเริ่มนับใหม่ตั้งแต่เลือกห้าง — <span style="color:#c0392b"><b>ใช้ในกรณีที่อยากนับใหม่ อย่ากดผิด</b> ที่ยังไม่กดบันทึกจะหาย</span></div>
+        <div>☰ = เมนูเพิ่มเติม (เริ่มใหม่ / เปิดห้าง)</div>
       </div>
       <div id="cStatus" style="font-size:13px;color:var(--muted);margin-top:8px;text-align:center"></div>
     </div>
@@ -373,6 +387,15 @@
 <script>
 // ====== ตั้งค่า: ใส่ URL ของ GAS Web App (ลงท้าย /exec) ======
 const API_URL = 'https://script.google.com/macros/s/AKfycbyN_hjC_W4Sf9RBst8cnZvEuHlHDal5d4_OD7Uo1-27xcW6ktK2Fz6whoX2CUMz57gi/exec';
+
+// เตือนก่อนออก/รีเฟรช ถ้ามีการนับที่ยังไม่ได้บันทึก (กันปัดจอโดนแล้วงานหาย)
+window.addEventListener('beforeunload', e=>{
+  try{
+    if(typeof CHK === 'object' && CHK && CHK.mall && Object.keys(CHK.counted||{}).length){
+      e.preventDefault(); e.returnValue = '';
+    }
+  }catch(err){}
+});
 
 // ============================================================
 // ====== ติดตั้งลงหน้าจอเครื่อง (PWA) ======
@@ -615,7 +638,8 @@ function startApp(){
 
   // ===== สิทธิ์เข้าหน้า ตาม role =====
   // admin: รายงาน+รายงานเช็ค+เช็คสต็อก / staff: รายงานเช็ค+เช็คสต็อก / user: เช็คสต็อก
-  const ROLE_VIEWS = { admin:['dash','hist','check'], staff:['hist','check'], user:['check'] };
+  // user เข้าได้ 2 หน้า (เช็คสต็อก + รายงานเช็ค) — เปิดหน้าเช็คสต็อกก่อน เพราะเป็นงานหลัก
+  const ROLE_VIEWS = { admin:['dash','hist','check'], staff:['hist','check'], user:['check','hist'] };
   const allowed = ROLE_VIEWS[DATA.role] || ['check'];
   document.querySelectorAll('#nav button').forEach(b=>{
     b.style.display = allowed.indexOf(b.dataset.v) >= 0 ? '' : 'none';
@@ -955,8 +979,17 @@ function setupCheck(){
   $('cStopBtn').onclick = stopScan;
   $('fabScan').onclick = ()=>{ window.scrollTo({top:0,behavior:'smooth'}); startScan(); };
   $('cSave').onclick = saveCheck;
+  // เมนู ☰ (เก็บปุ่มเสี่ยงไว้ข้างใน)
+  $('cMenuBtn').onclick = (e)=>{ e.stopPropagation(); $('cMenu').classList.toggle('hidden'); };
+  document.addEventListener('click', ()=> $('cMenu').classList.add('hidden'));  // คลิกที่อื่น = ปิดเมนู
+  $('cMenu').onclick = (e)=>{
+    const b = e.target.closest('button[data-act]'); if(!b) return;
+    $('cMenu').classList.add('hidden');
+    if(b.dataset.act === 'reset') askReset();
+    if(b.dataset.act === 'addmall') openAddMall();
+  };
   // เริ่มใหม่ = ล้างงานที่กรอกค้าง → ต้องถามยืนยันเสมอ (กันกดผิดแล้วงานหาย)
-  $('cReset').onclick = ()=>{
+  function askReset(){
     const filled = (CHK.items||[]).filter(hasCount).length;
     let msg = CHK.mall ? `ห้าง: ${CHK.mall}\n\n` : '';
     msg += 'จะล้างการนับรอบนี้ทั้งหมด แล้วเริ่มใหม่ตั้งแต่เลือกห้าง';
@@ -965,13 +998,33 @@ function setupCheck(){
       : '\n\n(ตอนนี้ยังไม่ได้กรอกตัวเลขอะไรไว้)';
     msg += '\n\nยืนยันเริ่มนับใหม่ไหม?';
     showConfirm(msg, resetCheck, { icon:'🔄', title:'เริ่มนับใหม่?', okText:'ใช่ ล้างแล้วเริ่มใหม่' });
-  };
-  // ปุ่มเปิดห้างใหม่ — เฉพาะ admin
-  if(DATA.role === 'admin'){ $('cAddMall').classList.remove('hidden'); $('cAddMall').onclick = openAddMall; }
+  }
+  // เมนูเปิดห้างใหม่ — เฉพาะ admin
+  if(DATA.role === 'admin') $('cAddMall').classList.remove('hidden');
   $('amCancel').onclick = ()=> $('addMallModal').classList.remove('show');
   $('amOk').onclick = submitAddMall;
   $('cSearch').oninput = ()=>{ filterCheckList(); renderAddSuggest(); };
   // รายการสินค้า (Price) สำหรับค้นหาเพิ่มสินค้า — มากับคำสั่ง init แล้ว (PRODUCTS)
+  offerDraftRecovery();   // ถ้าเผลอรีเฟรช/ปิดไป แล้วมีการนับค้าง → ชวนกู้คืนทันที
+}
+
+// หาการนับค้าง (ร่างที่เซฟอัตโนมัติ) แล้วเลือกห้างให้เลย + แจ้งวิธีกู้คืน
+function offerDraftRecovery(){
+  let found = null;
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      if(!k || k.indexOf(DRAFT_PREFIX)!==0) continue;
+      const mall = k.slice(DRAFT_PREFIX.length);
+      const d = loadDraft(mall);
+      if(d && (!found || d.t > found.t)) found = { mall: mall, t: d.t, n: Object.keys(d.counted||{}).length };
+    }
+  }catch(e){ return; }
+  if(!found) return;
+  const opt = $('cMall').querySelector(`option[value="${found.mall}"]`);
+  if(opt) $('cMall').value = found.mall;
+  $('cStatus').style.color = '#b9600f';
+  $('cStatus').innerHTML = `💾 <b>พบการนับค้างของ "${found.mall}" (${found.n} รายการ)</b><br>กด "โหลดรายการสินค้า" เพื่อกู้คืนตัวเลขที่กรอกไว้`;
 }
 
 // เติม dropdown ห้าง (เช็คสต็อก cMall + รายงานเช็ค hMall) จาก MALL_LIST ที่มีอยู่แล้ว
