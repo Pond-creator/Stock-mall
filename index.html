@@ -881,7 +881,12 @@ function loadMallStatus(mall, silent){
   if(!silent) showLoading('กำลังโหลดยอดกระทบเช็ค...'); // silent = ใช้ loader เดิม (ไม่หมุนซ้ำ)
   api({user:CRED.user, pass:CRED.pass, action:'mallstatus', mall:mall, from:$('fFrom').value, to:$('fTo').value}, (err,res)=>{
     hideLoading();
-    renderMallStatusBox(err?null:res, mall);
+    // โชว์สาเหตุถ้าโหลดไม่ได้ (เดิมว่างเปล่าเฉยๆ ทำให้หาสาเหตุไม่เจอ)
+    if(err || !res || !res.ok){
+      el.innerHTML = `<div class="panel" style="font-size:13px;color:#c0392b">📦 โหลดยอดกระทบเช็คไม่สำเร็จ: ${err || (res&&res.error) || 'ไม่ทราบสาเหตุ'}<br><span style="color:var(--muted);font-size:12px">ห้างที่ขอ: ${mall}</span></div>`;
+      return;
+    }
+    renderMallStatusBox(res, mall);
   });
 }
 function renderMallStatusBox(res, mall){
