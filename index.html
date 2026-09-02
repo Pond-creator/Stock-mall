@@ -133,6 +133,18 @@
   .menupop button:last-child{border-bottom:0}
   .menupop button:active{background:#eef4fb}
   .menupop button span{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:2px}
+  /* ตัวเลือกห้างแบบติ๊กได้หลายห้าง */
+  .msel{position:relative}
+  .mselbtn{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;font-size:15px;background:#fff;text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .mselbtn .cv{color:var(--muted);font-size:12px;flex:0 0 auto}
+  .mselbtn span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mselpop{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:70;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.16);max-height:320px;overflow:auto}
+  .mselpop label{display:flex;align-items:center;gap:9px;padding:9px 12px;font-size:14px;font-weight:400;margin:0;cursor:pointer;border-bottom:1px solid #f4f4f4}
+  .mselpop label:hover{background:#eef4fb}
+  .mselpop label.all{font-weight:700;background:#f7f9fc;position:sticky;top:0}
+  .mselpop input[type=checkbox]{width:17px;height:17px;flex:0 0 auto;margin:0;padding:0}
+  .statusnote{font-size:11.5px;color:var(--muted);line-height:1.6;margin:-4px 0 10px}
+  .statusnote b{color:#333}
   .btnhint{font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:8px;padding:8px 10px;background:#f7f9fc;border:1px solid var(--line);border-radius:8px}
   .btnhint b{color:#333}
   .pgbtn{border:1px solid var(--line);background:#fff;border-radius:7px;min-width:34px;height:34px;cursor:pointer;font-size:13px}
@@ -265,7 +277,10 @@
       <div class="frow">
         <div>
           <label>ห้าง</label>
-          <select id="fMall"></select>
+          <div class="msel">
+            <button type="button" class="mselbtn" id="fMallBtn"><span id="fMallLabel">ทุกห้าง (รวม)</span><span class="cv">▾</span></button>
+            <div class="mselpop hidden" id="fMallPop"></div>
+          </div>
         </div>
         <div>
           <label>จากวันที่</label>
@@ -597,10 +612,8 @@ function startApp(){
   $('whoName').textContent = DATA.name;
   $('whoRole').textContent = ({admin:'ผู้ดูแล',staff:'พนักงาน',user:'ผู้ใช้'})[DATA.role] || DATA.role;
 
-  // ห้าง dropdown
-  const sel = $('fMall');
-  sel.innerHTML = '<option value="__ALL__">ทุกห้าง (รวม)</option>' +
-    (DATA.malls||[]).map(m=>`<option value="${m}">${m}</option>`).join('');
+  // ห้าง — ตัวเลือกแบบติ๊กได้หลายห้าง
+  buildMallPicker(DATA.malls||[]);
 
   // ช่วงวันที่ default = วันแรกของข้อมูล .. วันนี้ (ครอบรวมวันเช็คสต็อกด้วย)
   const ds = (DATA.records||[]).map(r=>r.d).sort();
@@ -618,8 +631,8 @@ function startApp(){
   }
 
   // events — กรองทีเดียว อัปเดตทั้งการ์ด/กราฟ/แถบกระทบเช็ค พร้อมกัน
-  const refreshAll = ()=>{ render(); loadMallStatus(sel.value); };
-  sel.onchange = refreshAll;
+  const refreshAll = ()=>{ render(); loadMallStatus(mallParam()); };
+  MALL_PICK_ONCHANGE = refreshAll;
   $('fFrom').onchange = refreshAll;
   $('fTo').onchange = refreshAll;
   document.querySelectorAll('#segGran button').forEach(b=>{
@@ -655,16 +668,48 @@ function startApp(){
       showLoading('กำลังโหลดข้อมูล...');
       api({user:CRED.user, pass:CRED.pass, action:'data'}, (e,r)=>{
         hideLoading();
-        if(!e && r && r.ok){
-          DATA = r;
-          sel.innerHTML = '<option value="__ALL__">ทุกห้าง (รวม)</option>' +
-            (DATA.malls||[]).map(m=>`<option value="${m}">${m}</option>`).join('');
-          render();
-        }
+        if(!e && r && r.ok){ DATA = r; buildMallPicker(DATA.malls||[]); render(); }
         loadDashInit();
       });
     }
   }
+}
+
+// ====== ตัวเลือกห้าง (ติ๊กได้หลายห้าง) ======
+let SEL_MALLS = [];            // [] = ทุกห้าง
+let MALL_PICK_ONCHANGE = null; // ฟังก์ชันที่จะเรียกเมื่อเปลี่ยนการเลือก
+// ค่าที่ส่งให้ API: '__ALL__' = ทุกห้าง / 'A' = ห้างเดียว / 'A|B|C' = หลายห้าง
+function mallParam(){ return SEL_MALLS.length ? SEL_MALLS.join('|') : '__ALL__'; }
+
+function buildMallPicker(malls){
+  const pop = $('fMallPop');
+  pop.innerHTML = `<label class="all"><input type="checkbox" id="fMallAll" checked> ทุกห้าง (รวม)</label>` +
+    malls.map(m=>`<label><input type="checkbox" class="fMallOne" value="${m}"> ${m}</label>`).join('');
+  SEL_MALLS = [];
+  updateMallLabel();
+  $('fMallBtn').onclick = e=>{ e.stopPropagation(); pop.classList.toggle('hidden'); };
+  document.addEventListener('click', e=>{ if(!e.target.closest('.msel')) pop.classList.add('hidden'); });
+  $('fMallAll').onchange = ()=>{
+    pop.querySelectorAll('.fMallOne').forEach(c=>c.checked=false);
+    $('fMallAll').checked = true;   // "ทุกห้าง" ปิดเองไม่ได้ ต้องติ๊กห้างอื่นแทน
+    applyMallPick();
+  };
+  pop.querySelectorAll('.fMallOne').forEach(c=>{
+    c.onchange = ()=>{
+      const picked = Array.from(pop.querySelectorAll('.fMallOne:checked'));
+      $('fMallAll').checked = picked.length === 0;   // ไม่เลือกห้างไหนเลย = กลับไปทุกห้าง
+      applyMallPick();
+    };
+  });
+}
+function applyMallPick(){
+  SEL_MALLS = Array.from($('fMallPop').querySelectorAll('.fMallOne:checked')).map(c=>c.value);
+  updateMallLabel();
+  if(MALL_PICK_ONCHANGE) MALL_PICK_ONCHANGE();
+}
+function updateMallLabel(){
+  $('fMallLabel').textContent = SEL_MALLS.length === 0 ? 'ทุกห้าง (รวม)'
+    : (SEL_MALLS.length === 1 ? SEL_MALLS[0] : `เลือก ${SEL_MALLS.length} ห้าง`);
 }
 
 // แสดงยอดกระทบ + ตารางเช็คล่าสุด จากข้อมูลที่โหลดมาแล้ว
@@ -752,12 +797,13 @@ const barValueLabels = {
 
 let chart=null;
 function render(){
-  const mall=$('fMall').value, from=$('fFrom').value, to=$('fTo').value;
+  const from=$('fFrom').value, to=$('fTo').value;
   const money = DATA.canSeeMoney;
+  const pick = {}; SEL_MALLS.forEach(m=>pick[m]=1);   // ว่าง = ทุกห้าง
 
   // filter
   const recs = (DATA.records||[]).filter(r=>
-    (mall==='__ALL__'||r.m===mall) &&
+    (SEL_MALLS.length===0 || pick[r.m]) &&
     (!from || r.d>=from) && (!to || r.d<=to)
   );
 
@@ -824,7 +870,7 @@ function render(){
     plugins:[barValueLabels]
   });
 
-  $('foot').textContent = `แสดง ${recs.length.toLocaleString()} รายการ · ${mall==='__ALL__'?'ทุกห้าง':mall}`;
+  $('foot').textContent = `แสดง ${recs.length.toLocaleString()} รายการ · ${SEL_MALLS.length===0?'ทุกห้าง':SEL_MALLS.join(', ')}`;
 }
 
 // แถบ "กระทบเช็คล่าสุด" — คงเหลือจริง + ขายสะสม (โผล่เมื่อเลือกห้างเฉพาะ)
@@ -849,16 +895,22 @@ function renderMallStatusBox(res, mall){
   }
   const exSku = res.expectedSku!==undefined ? ` · ${fmt(res.expectedSku)} SKU` : '';
   const sdSku = res.soldSku!==undefined ? ` · ${fmt(res.soldSku)} SKU` : '';
-  let cards = `<div class="card bal"><div class="lbl">คงเหลือจริง</div><div class="val">${fmt(res.expectedQty)}</div><div class="sub">ชิ้น (หักการนับแล้ว)${exSku}</div></div>
-    <div class="card sold" style="border-color:#c0392b"><div class="lbl">ขาย/หาย (จากการเช็ค)</div><div class="val" style="color:#c0392b">${fmt(res.soldQty)}</div><div class="sub">ชิ้น (ประมาณ)${sdSku}</div></div>`;
-  if(res.expectedVal!==undefined){
-    cards += `<div class="card money"><div class="lbl">มูลค่าคงเหลือจริง</div><div class="val">${fmtM(res.expectedVal)}</div><div class="sub">บาท</div></div>
-      <div class="card money" style="border-color:#c0392b"><div class="lbl">มูลค่าขาย/หาย สะสม</div><div class="val" style="color:#c0392b">${fmtM(res.soldVal)}</div><div class="sub">บาท</div></div>`;
-  }
+  // เรียงเป็นคู่: [คงเหลือจริง + มูลค่า] แล้วค่อย [ขาย/หาย + มูลค่า]
+  // (2 ตัวแรก = ยอด ณ ปัจจุบัน ไม่ขึ้นกับช่วงวันที่ / 2 ตัวหลัง = กรองตามช่วงวันที่)
+  const money = res.expectedVal!==undefined;
+  let cards = `<div class="card bal"><div class="lbl">คงเหลือจริง</div><div class="val">${fmt(res.expectedQty)}</div><div class="sub">ชิ้น (หักการนับแล้ว)${exSku}</div></div>`;
+  if(money) cards += `<div class="card money"><div class="lbl">มูลค่าคงเหลือจริง</div><div class="val">${fmtM(res.expectedVal)}</div><div class="sub">บาท</div></div>`;
+  cards += `<div class="card sold" style="border-color:#c0392b"><div class="lbl">ขาย/หาย (จากการเช็ค)</div><div class="val" style="color:#c0392b">${fmt(res.soldQty)}</div><div class="sub">ชิ้น (ประมาณ)${sdSku}</div></div>`;
+  if(money) cards += `<div class="card money" style="border-color:#c0392b"><div class="lbl">มูลค่าขาย/หาย สะสม</div><div class="val" style="color:#c0392b">${fmtM(res.soldVal)}</div><div class="sub">บาท</div></div>`;
   const title = res.all
-    ? `📦 กระทบเช็ค — รวมทุกห้าง (เช็คแล้ว ${res.mallChecked} ห้าง)`
+    ? (res.picked
+        ? `📦 กระทบเช็ค — ${res.picked} ห้างที่เลือก (มีข้อมูลเช็ค ${res.mallChecked} ห้าง)`
+        : `📦 กระทบเช็ค — รวมทุกห้าง (เช็คแล้ว ${res.mallChecked} ห้าง)`)
     : `📦 กระทบเช็คล่าสุด (${fmtDate(res.lastCheckDate)})`;
-  el.innerHTML = `<div class="panel"><h3>${title}</h3><div class="cards">${cards}</div></div>`;
+  // อธิบายให้ชัด: 2 การ์ดแรกเป็นยอด ณ ปัจจุบัน (ไม่กรองวัน) / 2 การ์ดหลังกรองตามช่วงวันที่
+  const scope = res.all ? (res.picked ? ' ของห้างที่เลือก' : ' ทุกห้างที่เคยเช็ค') : 'ของห้างนี้';
+  const note = `<b>คงเหลือ/มูลค่า</b> = ยอดปัจจุบัน${scope} — <u>ไม่ขึ้นกับช่วงวันที่</u> · <b>ขาย/หาย</b> = เฉพาะรอบเช็คในช่วงวันที่เลือก`;
+  el.innerHTML = `<div class="panel"><h3>${title}</h3><div class="statusnote">${note}</div><div class="cards">${cards}</div></div>`;
 }
 
 // ====== โหลดรวมตอนเข้าเว็บครั้งแรก/กดโหลดข้อมูลล่าสุด (กระทบเช็ครวม + เช็คล่าสุด) ======
