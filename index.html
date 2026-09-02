@@ -516,7 +516,7 @@ function api(params, cb){
   const qs = Object.keys(params).map(k=>encodeURIComponent(k)+'='+encodeURIComponent(params[k])).join('&');
   s.src = API_URL + '?' + qs + '&callback=' + name;
   document.body.appendChild(s);
-  setTimeout(()=>{ if(!done){ cleanup(); cb('หมดเวลาเชื่อมต่อ'); } }, 20000);
+  setTimeout(()=>{ if(!done){ cleanup(); cb('หมดเวลาเชื่อมต่อ'); } }, 40000);  // เผื่อข้อมูลโตขึ้น (GAS อ่านชีทใหญ่ใช้เวลา)
 }
 
 // ====== STATE ======
