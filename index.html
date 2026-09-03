@@ -115,6 +115,9 @@
   #cAddSuggest .sg .nm b{display:block;font-size:11px;color:var(--muted);font-weight:400}
   #cAddSuggest .sg .plus{color:#0b8043;font-weight:800;font-size:18px;flex:0 0 auto}
   #cAddSuggest .none{font-size:12px;color:var(--muted);padding:6px 4px}
+  #cAddSuggest .sghead{font-size:12px;font-weight:700;color:#0b8043;margin:10px 0 6px;padding-top:8px;border-top:1px dashed var(--line)}
+  .foundhead{font-size:12px;font-weight:700;color:#1f4e79;margin:2px 0 6px}
+  .foundhead.none{color:var(--muted);font-weight:400}
   .chkitem{border-bottom:1px solid #eee}
   .chkitem.added{background:#fff7cc}
   .chkitem.scanned{background:#d9f2df;border-left:4px solid #0b8043}
@@ -367,9 +370,10 @@
       <div class="panel">
         <h3>รายการนับ <span id="cType"></span></h3>
         <div style="font-size:12px;color:var(--muted);margin-bottom:6px">กรอกจำนวนที่ <b>นับได้จริง</b> · <b style="color:#c0392b">ไปดูแล้วไม่เจอของ → กดปุ่ม "ไม่เจอ"</b> (ใส่ 0) · ปล่อยว่าง = ยังไม่ได้ไปนับ · 📝 = หมายเหตุรายตัว</div>
-        <input id="cSearch" placeholder="🔍 ค้นหาสินค้า (ชื่อ / รหัส) — พิมพ์เพื่อเพิ่มสินค้า">
-        <div id="cAddSuggest"></div>
+        <input id="cSearch" placeholder="🔍 ค้นหาสินค้า (ชื่อ / รหัส)">
+        <div id="cFound"></div>
         <div id="cList"></div>
+        <div id="cAddSuggest"></div>
       </div>
 
       <button class="bigbtn save" id="cSave">💾 บันทึกผลเช็ค</button>
@@ -1007,14 +1011,16 @@ let MALL_LIST = [];
 let PRODUCTS = [];  // สินค้าจาก Price (ไว้ค้นหาเพิ่ม)
 
 // ค้นหาสินค้าจาก Price → เด้งให้กดเพิ่ม (เฉพาะที่ยังไม่อยู่ในรายการ)
+// ⚠️ กล่องนี้อยู่ "ใต้" รายการนับ เพราะส่วนใหญ่คนค้นหาเพื่อกรอกของที่มีอยู่แล้ว ไม่ใช่เพื่อเพิ่มของใหม่
 function renderAddSuggest(){
   const box = $('cAddSuggest');
   const q = $('cSearch').value.trim().toLowerCase();
   if(q.length < 2){ box.innerHTML=''; return; }
   const inList = {}; CHK.items.forEach(it=>inList[it.qr]=1);
   const hits = PRODUCTS.filter(p=>!inList[p.qr] && ((p.desc||'').toLowerCase().includes(q) || p.qr.toLowerCase().includes(q))).slice(0, 12);
-  if(!hits.length){ box.innerHTML='<div class="none">— ไม่พบสินค้าใหม่ที่ตรง (หรือมีในรายการแล้ว) —</div>'; return; }
-  box.innerHTML = hits.map(p=>`<div class="sg" data-add="${p.qr}"><div class="nm">${p.desc||p.qr}<b>${p.qr}</b></div><div class="plus">＋</div></div>`).join('');
+  if(!hits.length){ box.innerHTML=''; return; }   // ไม่มีของใหม่ที่ตรง = ไม่ต้องรกหน้าจอ
+  box.innerHTML = `<div class="sghead">➕ ไม่มีในรายการห้างนี้ — กดเพื่อเพิ่ม (${hits.length} รายการ)</div>` +
+    hits.map(p=>`<div class="sg" data-add="${p.qr}"><div class="nm">${p.desc||p.qr}<b>${p.qr}</b></div><div class="plus">＋</div></div>`).join('');
   box.querySelectorAll('[data-add]').forEach(el=>{ el.onclick = ()=>addProduct(el.dataset.add); });
 }
 
@@ -1271,12 +1277,20 @@ function removeItem(qr){
   saveDraft(); renderCheckList();
 }
 
-// ค้นหาสินค้าในรายการ
+// ค้นหาสินค้าในรายการ (ของที่มีอยู่ในห้างนี้) — โชว์ผลบนสุดเสมอ
 function filterCheckList(){
   const q = $('cSearch').value.trim().toLowerCase();
+  let found = 0;
   document.querySelectorAll('#cList .chkitem').forEach(item=>{
-    item.style.display = (!q || item.dataset.search.includes(q)) ? '' : 'none';
+    const hit = !q || item.dataset.search.includes(q);
+    item.style.display = hit ? '' : 'none';
+    if(q && hit) found++;
   });
+  const fb = $('cFound');
+  if(!q){ fb.innerHTML=''; return; }
+  fb.innerHTML = found
+    ? `<div class="foundhead">✅ มีในรายการห้างนี้ ${found} รายการ — กรอกจำนวนได้เลย</div>`
+    : `<div class="foundhead none">— ไม่มีสินค้านี้ในรายการห้างนี้ —</div>`;
 }
 
 function updateSold(qr){
