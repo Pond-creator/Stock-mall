@@ -240,6 +240,24 @@
   .ditem .dnote{font-size:11px;color:#b9600f;background:#fff7e6;padding:1px 6px;border-radius:6px;margin-top:2px;display:inline-block}
   .ditem .dc{width:48px;text-align:center}
   .ditem .dsold{width:54px;text-align:center;font-weight:700}
+  /* ===== โหมดเทียบรอบ: โชว์โซ่ รอบก่อน → จ่าย/รับ → ควรมี → นับได้ → ต่าง ===== */
+  .ditem .dp,.ditem .dm{width:52px;text-align:center;display:none}
+  .roundcard.cmp .ditem .dp,.roundcard.cmp .ditem .dm{display:block}
+  /* ชื่อสินค้าขึ้นบรรทัดบนเต็มความกว้าง แล้วตัวเลขเรียงใต้ชื่อ — บนมือถือจะอ่านง่ายกว่าบีบเป็น 6 ช่อง */
+  .roundcard.cmp .ditem{flex-wrap:wrap}
+  .roundcard.cmp .ditem .dn{flex:0 0 100%;margin-bottom:3px}
+  .ditem .dm.neg{color:#c0392b} .ditem .dm.pos{color:#0b8043}
+  .cmpbtn{border:0;background:#eef1f5;border-radius:7px;height:34px;padding:0 10px;cursor:pointer;
+          font-size:12px;flex:0 0 auto;white-space:nowrap;color:#1f4e79;font-weight:600}
+  .roundcard.cmp .cmpbtn{background:#1f4e79;color:#fff}
+  /* ===== ปุ่มตรวจ remark ในหน้าเว็บ (admin) ===== */
+  #umOut{margin-top:10px;font-size:13px}
+  .umgrp{margin-top:10px}
+  .umgrp h4{margin:0 0 5px;font-size:13px}
+  .umrow{display:flex;gap:8px;padding:5px 9px;border-radius:7px;margin-bottom:4px;font-size:12.5px;align-items:center}
+  .umrow .umk{flex:1;min-width:0;word-break:break-word}
+  .umrow .umn{white-space:nowrap;font-size:11.5px;color:var(--muted)}
+  .umrow.red{background:#fde7e9} .umrow.gray{background:#efefef} .umrow.plain{background:#f6f7f9}
 </style>
 </head>
 <body>
@@ -354,6 +372,13 @@
       <h3>🕘 เช็คล่าสุด</h3>
       <div class="tblwrap"><table id="recentTbl"></table></div>
       <div id="recentPage" style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:10px"></div>
+    </div>
+
+    <!-- ตรวจ remark จากหน้าเว็บ (admin) — อ่านอย่างเดียว ไม่แตะชีท Unmatched -->
+    <div class="panel">
+      <h3>🔎 ตรวจ remark ที่ระบบหาห้างไม่เจอ</h3>
+      <button class="bigbtn ghost" id="umBtn" style="margin:0">ตรวจเลย</button>
+      <div id="umOut"><div class="xshint">อ่านอย่างเดียว ไม่สร้าง/ไม่ลบชีท Unmatched — กดดูกี่ครั้งก็ได้ คอมเมนต์ที่พิมพ์ไว้ในชีทไม่หาย</div></div>
     </div>
 
     <div class="panel">
@@ -720,6 +745,7 @@ function startApp(){
   setupCheck();
   setupHist();
   setupXSearch();
+  setupUnmatched();
 
   // ===== สิทธิ์เข้าหน้า ตาม role =====
   // admin: รายงาน+รายงานเช็ค+เช็คสต็อก / staff: รายงานเช็ค+เช็คสต็อก / user: เช็คสต็อก
@@ -1891,6 +1917,64 @@ function loadHistory(){
 
 function fmtDate(s){ const p=String(s).split('-'); return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:s; }
 
+// กดปุ่ม ⇄ = เปิด/ปิดคอลัมน์ "รอบก่อน / จ่าย-รับ" + กางรายการให้เลยถ้ายังปิดอยู่
+function toggleCmp(btn){
+  const card = btn.closest('.roundcard');
+  const on = card.classList.toggle('cmp');
+  btn.textContent = on ? '⇄ ปิดการเทียบ' : '⇄ เทียบรอบก่อน';
+  const d = card.querySelector('.rounddetail');
+  if(on && d && !d.classList.contains('open')){
+    d.classList.add('open');
+    const ar = card.querySelector('.arrow'); if(ar) ar.textContent = '▲';
+  }
+}
+
+// ====== ตรวจ remark ที่หาห้างไม่เจอ (admin, หน้ารายงาน) ======
+// เรียก action=unmatched ซึ่งอ่านอย่างเดียว ไม่สร้าง/ลบชีท Unmatched
+// (เมนูในชีทยังทำงานเหมือนเดิม ไว้ใช้ตอนอยากได้ชีทไว้พิมพ์คอมเมนต์)
+function setupUnmatched(){
+  const b = $('umBtn'); if(!b) return;
+  b.onclick = ()=>{
+    b.disabled = true; b.textContent = 'กำลังตรวจ...';
+    $('umOut').innerHTML = '<div class="xshint">กำลังอ่านข้อมูล อาจใช้เวลาสัก 5-15 วินาที…</div>';
+    api({user:CRED.user, pass:CRED.pass, action:'unmatched'}, (err,res)=>{
+      b.disabled = false; b.textContent = 'ตรวจอีกครั้ง';
+      if(err || !res || !res.ok){
+        $('umOut').innerHTML = `<div class="xshint" style="color:#c0392b">ตรวจไม่สำเร็จ — ${esc((res&&res.error)||'ลองกดใหม่อีกครั้ง')}</div>`;
+        return;
+      }
+      // GAS เวอร์ชันเก่าจะไม่รู้จักคำสั่งนี้ แล้วตอบ ok กลับมาเฉยๆ โดยไม่มีข้อมูล → ต้องบอกให้ชัด
+      if(res.nUnmatched === undefined){
+        $('umOut').innerHTML = '<div class="xshint" style="color:#c0392b">ปุ่มนี้ต้องใช้ Apps Script เวอร์ชันใหม่ — ให้แอดมิน deploy ตัวล่าสุดก่อน (ระหว่างนี้ใช้เมนูในชีทได้ตามปกติ)</div>';
+        return;
+      }
+      renderUnmatched(res);
+    });
+  };
+}
+
+function renderUnmatched(r){
+  const row = (cls, k, o, i, oq, iq, tail)=>
+    `<div class="umrow ${cls}"><span class="umk">${esc(k)}${tail?` <span style="opacity:.75">${esc(tail)}</span>`:''}</span>`
+    + `<span class="umn">จ่าย ${fmt(o)} แถว/${fmt(oq)} ชิ้น · รับ ${fmt(i)} แถว/${fmt(iq)} ชิ้น</span></div>`;
+  const grp = (title, cls, list, total, tailOf)=>{
+    if(!total) return '';
+    const more = total - list.length;
+    return `<div class="umgrp"><h4>${title} — ${fmt(total)} รายการ</h4>`
+      + list.map(x=>row(cls, x.rk, x.out, x.in, x.outQty||0, x.inQty||0, tailOf?tailOf(x):'')).join('')
+      + (more>0 ? `<div class="xshint">…และอีก ${fmt(more)} รายการ (ดูครบในชีท Unmatched)</div>` : '')
+      + `</div>`;
+  };
+  const okLine = r.nAmbiguous===0
+    ? '<div style="color:#245c17;font-weight:600">✅ ไม่มี remark ที่ชนหลายห้าง</div>'
+    : '<div style="color:#8e1b24;font-weight:600">⚠️ มี remark ที่ชนหลายห้าง — ต้องแก้ keyword ในชีท Config</div>';
+  $('umOut').innerHTML = okLine
+    + grp('🔴 ชนหลายห้าง (ต้องแก้)', 'red', r.ambiguous||[], r.nAmbiguous, x=>'→ '+x.malls)
+    + grp('⚪ ตั้งใจกันออกจากระบบหลัก (Event ฯลฯ)', 'gray', r.excluded||[], r.nExcluded, x=>'· เดิมจะเข้า '+x.mall)
+    + grp('หาห้างไม่เจอ (ส่วนใหญ่เป็นช่องทางอื่น ไม่ใช่ห้าง)', 'plain', r.unmatched||[], r.nUnmatched)
+    + '<div class="xshint">ตัวเลข <b>แถว</b> = จำนวนรายการ · <b>ชิ้น</b> = จำนวนสินค้ารวม (คนละตัวกัน)</div>';
+}
+
 function renderHist(){
   // กรองตามช่วงวัน
   const from=$('hFrom').value, to=$('hTo').value;
@@ -1903,11 +1987,19 @@ function renderHist(){
     const badge = isBase ? '<span class="badge base">ตั้งเบส</span>' : '<span class="badge check">รอบตรวจ</span>';
     const soldHtml = isBase ? '<span style="color:var(--muted);font-size:13px">เบสตั้งต้น</span>'
       : `<div class="q">−${fmt(r.soldQty)}</div>${HIST.money?`<div class="m">${fmtM(r.soldVal||0)} บาท</div>`:''}${r.overQty?`<div class="m" style="color:#0b8043">เกิน +${fmt(r.overQty)}</div>`:''}`;
+    // คอลัมน์ "รอบก่อน" + "จ่าย/รับ" ใส่ไว้เสมอแต่ซ่อนด้วย CSS — กดปุ่ม ⇄ ถึงโผล่
+    // (ค่ามาจาก it.prev / it.move ที่ GAS ส่งมาพร้อมกันอยู่แล้ว ไม่ได้ยิงเซิร์ฟเวอร์เพิ่ม)
+    // GAS เวอร์ชันเก่าไม่ส่ง prev/move มา → ไม่ต้องโชว์ปุ่มเทียบ (กันโชว์เลข 0 หลอกตา)
+    const hasCmp = !!(r.items.length && r.items[0].prev !== undefined);
     const detail = r.items.map(it=>{
       let sCol='', sTxt='';
       if(!isBase){ const s=it.sold; sCol=s>0?'pos':'zero'; sTxt = s>0?'−'+fmt(s):(s===0?'✓':'+'+fmt(-s)); }
+      const mv = Number(it.move)||0;
+      const mvTxt = mv>0 ? '+'+fmt(mv) : (mv<0 ? '−'+fmt(-mv) : '0');
       return `<div class="ditem">
         <div class="dn">${it.desc||it.qr}<b>${it.qr}</b>${it.note?`<span class="dnote">📝 ${it.note}</span>`:''}</div>
+        ${(isBase||!hasCmp)?'':`<div class="dp" title="รอบก่อนนับได้">${fmt(Number(it.prev)||0)}</div>`}
+        ${(isBase||!hasCmp)?'':`<div class="dm ${mv>0?'pos':(mv<0?'neg':'')}" title="จ่าย−รับ ระหว่าง 2 รอบ">${mvTxt}</div>`}
         ${isBase?'':`<div class="dc" title="ควรมี">${fmt(it.expected)}</div>`}
         <div class="dc" title="นับได้">${fmt(it.counted)}</div>
         ${isBase?'':`<div class="dsold sold ${sCol}">${sTxt}</div>`}
@@ -1917,12 +2009,13 @@ function renderHist(){
       <div class="roundhd" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.arrow').textContent=this.nextElementSibling.classList.contains('open')?'▲':'▼'">
         <div class="dt"><b>${fmtDate(r.date)}</b> ${badge}<span>โดย ${r.user} · ${r.itemCount} รายการ</span></div>
         <div class="sv">${soldHtml}</div>
+        ${(isBase||!hasCmp)?'':`<button class="cmpbtn" title="เทียบกับรอบก่อนหน้า" onclick="event.stopPropagation();toggleCmp(this)">⇄ เทียบรอบก่อน</button>`}
         <button onclick="event.stopPropagation();exportRoundCSV('${r.roundId}')" title="โหลด Excel รอบนี้" style="border:0;background:#eef1f5;border-radius:7px;width:34px;height:34px;cursor:pointer;font-size:14px;flex:0 0 auto">⬇️</button>
         <div class="arrow">▼</div>
       </div>
       <div class="rounddetail">
         <div class="ditem" style="font-weight:700;color:var(--muted);font-size:11px">
-          <div class="dn">สินค้า</div>${isBase?'':'<div class="dc">ควรมี</div>'}<div class="dc">นับได้</div>${isBase?'':'<div class="dsold">ขาย</div>'}
+          <div class="dn">สินค้า</div>${(isBase||!hasCmp)?'':'<div class="dp">รอบก่อน</div><div class="dm">จ่าย/รับ</div>'}${isBase?'':'<div class="dc">ควรมี</div>'}<div class="dc">นับได้</div>${isBase?'':'<div class="dsold">ขาย</div>'}
         </div>
         ${detail}
       </div>
