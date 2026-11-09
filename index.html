@@ -188,6 +188,31 @@
   #healthBar > b:first-child{display:block;font-size:14px;margin-bottom:4px}
   #healthBar ul{margin:6px 0 0;padding-left:20px}
   #healthBar li{margin:3px 0}
+  /* ===== การ์ดเตือนห้างที่ค้างไม่ได้เช็ค (หน้ารายงานเช็ค) ===== */
+  #odBox{border-radius:12px;padding:13px 14px;margin-bottom:14px;font-size:13px;line-height:1.5}
+  #odBox.ok{background:#e7f4e4;border:1px solid #a9d39c;color:#245c17}
+  #odBox.due{background:#fff4ce;border:1px solid #e3c96a;color:#6b5200}
+  #odBox.late{background:#fde7e9;border:1px solid #e9a2a8;color:#8e1b24}
+  #odBox .odt{font-weight:700;font-size:14px;margin-bottom:7px}
+  .odrow{display:flex;align-items:center;gap:8px;padding:6px 8px;margin-top:5px;background:rgba(255,255,255,.65);
+         border-radius:8px;cursor:pointer;border:0;width:100%;text-align:left;font:inherit;color:inherit}
+  .odrow:hover{background:#fff}
+  .odrow .odn{flex:1;font-weight:600}
+  .odrow .odd{font-size:12px;white-space:nowrap;opacity:.85}
+  .oddot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+  .oddot.late{background:#c0392b} .oddot.due{background:#d4a017} .oddot.never{background:#8a8a8a}
+  /* ===== ค้นหาสินค้าข้ามห้าง (หน้ารายงาน) ===== */
+  #xsQ{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;font-size:14px;box-sizing:border-box}
+  .xshint{font-size:12px;color:var(--muted);margin-top:8px}
+  .xsitem{border-top:1px solid var(--line);padding:10px 0 2px}
+  .xsitem:first-child{border-top:0}
+  .xsname{font-weight:600;font-size:14px}
+  .xsqr{font-size:11px;color:var(--muted);margin-bottom:6px}
+  .xschips{display:flex;gap:6px;flex-wrap:wrap}
+  .xschip{background:#eaf1fb;color:#1f4e79;border-radius:9px;padding:3px 9px;font-size:12px;white-space:nowrap}
+  .xschip b{font-weight:700}
+  .xschip.zero{background:#f0f0f0;color:#777}
+  .xstot{font-size:12px;color:var(--muted);margin-top:5px}
   .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}
   .badge.base{background:#fde9d0;color:#b9600f} .badge.check{background:#d7e9d2;color:#2e6b1f}
   .notready{opacity:.5;font-size:12px;color:var(--muted)}
@@ -316,6 +341,13 @@
 
     <div class="cards" id="cards"></div>
 
+    <!-- ค้นหาสินค้าข้ามห้าง — ใช้ข้อมูลที่โหลดมาแล้ว (DATA.records + PRODUCTS) ไม่ยิงเซิร์ฟเวอร์เพิ่ม -->
+    <div class="panel">
+      <h3>🔎 ค้นหาสินค้า — ตอนนี้อยู่ห้างไหนบ้าง</h3>
+      <input id="xsQ" placeholder="พิมพ์ชื่อสินค้า หรือ QR code">
+      <div id="xsOut"><div class="xshint">พิมพ์อย่างน้อย 2 ตัวอักษร · ยอดที่แสดงเป็น <b>ยอดสะสมทั้งหมด (จ่าย − รับ)</b> ไม่อิงช่วงวันที่ด้านบน</div></div>
+    </div>
+
     <div id="mallStatus"></div>
 
     <div class="panel">
@@ -394,6 +426,8 @@
 
   <!-- ===== VIEW: รายงานเช็ค ===== -->
   <div id="viewHist" class="wrap hidden">
+    <!-- เตือนห้างที่ค้างไม่ได้เช็คนาน — ใช้วันที่เช็คล่าสุดที่โหลดมาตอนล็อกอินแล้ว ไม่ยิงเซิร์ฟเวอร์เพิ่ม -->
+    <div id="odBox" class="hidden"></div>
     <div class="scanbox">
       <label>เลือกห้าง</label>
       <div style="display:flex;gap:8px;align-items:stretch">
@@ -685,6 +719,7 @@ function startApp(){
   setupNav();
   setupCheck();
   setupHist();
+  setupXSearch();
 
   // ===== สิทธิ์เข้าหน้า ตาม role =====
   // admin: รายงาน+รายงานเช็ค+เช็คสต็อก / staff: รายงานเช็ค+เช็คสต็อก / user: เช็คสต็อก
@@ -794,6 +829,150 @@ function renderHealth(h){
     + (crit ? '<div style="margin-top:8px">กด <b>🔄 โหลดข้อมูลล่าสุด</b> อีกครั้งหลังรอสัก 1 นาที ถ้ายังขึ้นเหมือนเดิม แปลว่าไฟล์ต้นทางมีปัญหาจริง ต้องแจ้งแอดมิน</div>' : '');
 }
 
+// ====== เตือนห้างที่ค้างไม่ได้เช็คนาน (หน้ารายงานเช็ค) ======
+// ใช้ m.last (วันที่เช็คล่าสุดรายห้าง) ที่ GAS ส่งมาพร้อม mallList ตอนล็อกอินอยู่แล้ว
+// → ไม่ต้องยิงเซิร์ฟเวอร์เพิ่มแม้แต่ครั้งเดียว ไม่ทำให้ช้าลง
+const OD_DUE  = 14;   // เกินกี่วัน = เตือนเหลือง
+const OD_LATE = 30;   // เกินกี่วัน = เตือนแดง
+const OD_SHOW = 6;    // แสดงสูงสุดกี่ห้าง (ที่เหลือสรุปเป็นบรรทัดเดียว)
+
+function daysSince(ymd){
+  const p = String(ymd||'').split('-');
+  if(p.length !== 3) return null;
+  const d = new Date(+p[0], +p[1]-1, +p[2]);
+  if(isNaN(d)) return null;
+  const today = new Date();
+  // ตัดเวลาออกทั้งคู่ ให้เทียบกันแบบ "จำนวนวัน" ล้วนๆ
+  const a = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.round((a - d) / 86400000);
+}
+
+function renderOverdue(){
+  const el = $('odBox');
+  if(!el) return;
+  const ready = (MALL_LIST||[]).filter(m=>m.ready);
+  if(!ready.length){ el.className='hidden'; el.innerHTML=''; return; }
+
+  const late=[], due=[], never=[];
+  ready.forEach(m=>{
+    if(!m.last){ never.push(m); return; }
+    const n = daysSince(m.last);
+    if(n === null) return;
+    if(n >= OD_LATE) late.push({m:m, n:n});
+    else if(n >= OD_DUE) due.push({m:m, n:n});
+  });
+  // ห้างที่ไม่เคยเช็คเลย = งานค้างเหมือนกัน แต่ไม่มีวันให้เทียบ → จัดอยู่กลุ่มท้ายสุด
+  const items = late.concat(due).sort((a,b)=>b.n-a.n)
+    .concat(never.map(m=>({m:m, n:null})));
+
+  if(!items.length){
+    el.className = 'ok';
+    el.innerHTML = `<div class="odt">✅ ทุกห้างเช็คครบภายใน ${OD_DUE} วัน</div>`
+      + `<div style="font-size:12px">เปิดอยู่ ${ready.length} ห้าง — ไม่มีห้างไหนค้าง</div>`;
+    return;
+  }
+
+  const nLate = late.length, nNever = never.length;
+  el.className = (nLate || nNever) ? 'late' : 'due';
+  const head = (nLate || nNever)
+    ? `🔴 มี ${items.length} ห้างที่ควรเช็คแล้ว`
+    : `🟡 มี ${items.length} ห้างใกล้ถึงรอบเช็ค`;
+
+  const shown = items.slice(0, OD_SHOW);
+  const rest  = items.length - shown.length;
+  el.innerHTML = `<div class="odt">${head}</div>`
+    + shown.map(it=>{
+        const cls = it.n === null ? 'never' : (it.n >= OD_LATE ? 'late' : 'due');
+        const txt = it.n === null ? 'ยังไม่เคยเช็ค'
+                                  : `${it.n} วันแล้ว · ${fmtDate(it.m.last)}`;
+        return `<button class="odrow" data-mall="${escAttr(it.m.name)}">`
+             + `<span class="oddot ${cls}"></span>`
+             + `<span class="odn">${esc(it.m.name)}</span>`
+             + `<span class="odd">${txt}</span></button>`;
+      }).join('')
+    + (rest > 0 ? `<div style="font-size:12px;margin-top:7px">…และอีก ${rest} ห้าง</div>` : '')
+    + `<div style="font-size:12px;margin-top:8px;opacity:.85">กดชื่อห้างเพื่อดูประวัติการเช็คของห้างนั้น</div>`;
+
+  // กดแล้วเลือกห้างในช่องด้านล่าง + โหลดประวัติให้เลย
+  el.querySelectorAll('.odrow').forEach(b=>{
+    b.onclick = ()=>{
+      const name = b.dataset.mall;
+      if($('hMall')){ $('hMall').value = name; }
+      if($('hMall') && $('hMall').value === name) loadHistory();
+    };
+  });
+}
+
+// ====== ค้นหาสินค้าข้ามห้าง (หน้ารายงาน — admin เท่านั้น) ======
+// ใช้ DATA.records + PRODUCTS ที่โหลดมาแล้ว → ค้นได้ทันที ไม่ยิงเซิร์ฟเวอร์
+const XS_MIN   = 2;    // พิมพ์อย่างน้อยกี่ตัวอักษรถึงเริ่มค้น
+const XS_MAXQR = 10;   // แสดงได้สูงสุดกี่รุ่น (กันคำกว้างๆ แล้วออกมาเป็นร้อยรุ่น)
+
+function esc(t){ return String(t==null?'':t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function escAttr(t){ return esc(t).replace(/'/g,'&#39;'); }
+
+function setupXSearch(){
+  const inp = $('xsQ');
+  if(!inp) return;
+  let t = null;
+  inp.oninput = ()=>{ clearTimeout(t); t = setTimeout(runXSearch, 220); };
+}
+
+function xsHint(msg){ $('xsOut').innerHTML = `<div class="xshint">${msg}</div>`; }
+
+function runXSearch(){
+  const box = $('xsOut'); if(!box) return;
+  const q = ($('xsQ').value||'').trim().toLowerCase();
+  if(q.length < XS_MIN){
+    xsHint(`พิมพ์อย่างน้อย ${XS_MIN} ตัวอักษร · ยอดที่แสดงเป็น <b>ยอดสะสมทั้งหมด (จ่าย − รับ)</b> ไม่อิงช่วงวันที่ด้านบน`);
+    return;
+  }
+  const recs = DATA.records || [];
+  if(!recs.length){ xsHint('ยังไม่มีข้อมูล — กดปุ่ม 🔄 โหลดข้อมูลล่าสุด ก่อน'); return; }
+
+  // 1) หา QR ที่ตรงกับคำค้น — จากชื่อสินค้าในชีท Price หรือพิมพ์เลข QR มาตรงๆ
+  const name = {};
+  (PRODUCTS||[]).forEach(pr=>{
+    const d = (pr.desc||'').toLowerCase(), k = (pr.qr||'').toLowerCase();
+    if(d.includes(q) || k.includes(q)) name[pr.qr] = pr.desc||'';
+  });
+  // QR ที่มีใน Base แต่ยังไม่มีในชีท Price → ค้นด้วยเลข QR ได้เหมือนกัน
+  recs.forEach(r=>{ if(!(r.qr in name) && r.qr.toLowerCase().includes(q)) name[r.qr] = ''; });
+
+  const qrs = Object.keys(name);
+  if(!qrs.length){ xsHint(`ไม่พบสินค้าที่ตรงกับ "${esc(q)}"`); return; }
+
+  // 2) รวมยอดคงเหลือแยกรายห้าง (จ่าย − รับ) — ทั้งหมดตั้งแต่เริ่มเก็บข้อมูล
+  const agg = {}, tot = {};
+  qrs.forEach(k=>{ agg[k] = {}; tot[k] = 0; });
+  recs.forEach(r=>{
+    if(!(r.qr in agg)) return;
+    const v = (r.t === 'out' ? r.q : -r.q);
+    agg[r.qr][r.m] = (agg[r.qr][r.m]||0) + v;
+    tot[r.qr] += v;
+  });
+
+  // รุ่นที่ยอดรวมเยอะสุดขึ้นก่อน
+  const order = qrs.slice().sort((a,b)=>tot[b]-tot[a]);
+  const show  = order.slice(0, XS_MAXQR);
+  const more  = order.length - show.length;
+
+  box.innerHTML = show.map(qr=>{
+    const malls = Object.keys(agg[qr]).filter(m=>agg[qr][m] !== 0)
+                        .sort((a,b)=>agg[qr][b]-agg[qr][a]);
+    const chips = malls.length
+      ? malls.map(m=>`<span class="xschip${agg[qr][m]<0?' zero':''}">${esc(m)} <b>${fmt(agg[qr][m])}</b></span>`).join('')
+      : '<span class="xschip zero">ไม่เหลือที่ห้างไหนเลย</span>';
+    return `<div class="xsitem">`
+         + `<div class="xsname">${esc(name[qr] || '(ไม่มีชื่อในชีท Price)')}</div>`
+         + `<div class="xsqr">${esc(qr)}</div>`
+         + `<div class="xschips">${chips}</div>`
+         + `<div class="xstot">รวมทุกห้าง ${fmt(tot[qr])} ชิ้น · ${malls.length} ห้าง</div>`
+         + `</div>`;
+  }).join('')
+  + (more > 0 ? `<div class="xshint">พบอีก ${more} รุ่นที่ตรงคำค้น — พิมพ์ให้เจาะจงขึ้นเพื่อดูรุ่นที่ต้องการ</div>` : '');
+}
+
 // ====== สลับหน้า ======
 function switchView(v){
   document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on', x.dataset.v===v));
@@ -803,6 +982,7 @@ function switchView(v){
   // เปิดหน้ารายงานเช็คครั้งแรก + ยังไม่ได้เลือกห้าง → โชว์งานล่าสุดให้เลยโดยไม่ต้องกด
   // (ใช้ข้อมูลที่โหลดมาตอนล็อกอินแล้ว ไม่ได้ยิงเซิร์ฟเวอร์เพิ่ม)
   if(v==='hist' && !$('hMall').value && !HIST.rounds.length && RECENT.length) renderRecentInHist();
+  if(v==='hist') renderOverdue();   // เปิดค้างข้ามวัน ตัวเลข "กี่วันแล้ว" จะได้ไม่ค้างของเมื่อวาน
 }
 function setupNav(){
   $('btnRefresh').onclick = refreshData;
@@ -1172,6 +1352,8 @@ function renderMallDropdowns(){
       ready.map(m=>`<option value="${m.name}">${m.name}${m.last ? '  · เช็คล่าสุด ' + fmtDate(m.last) : '  · ยังไม่เคยเช็ค'}</option>`).join('');
     if(keep) $('hMall').value = keep;
   }
+  // การ์ดเตือนห้างค้าง ใช้ข้อมูลชุดเดียวกัน → อัปเดตพร้อมกันเสมอ ไม่มีทางหลุด sync
+  renderOverdue();
 }
 
 // โหลดรายชื่อห้างใหม่จากเซิร์ฟเวอร์ (ใช้หลังเพิ่มห้างใหม่เท่านั้น)
@@ -1513,6 +1695,9 @@ function doSave(){
       resetCheck();   // เด้งกลับสถานะเริ่มต้น (เหมือนก่อนเลือกห้าง)
       $('cStatus').style.color = '#0b8043';
       $('cStatus').textContent = `✅ บันทึกผลเช็ค "${savedMall}" เรียบร้อยแล้ว (${res.saved||0} รายการ)`;
+      // อัปเดต "เช็คล่าสุด" ของห้างนี้ในเครื่องเลย ไม่ต้องรอโหลดใหม่ → การ์ดเตือน + ลำดับห้างตรงทันที
+      const mRow = (MALL_LIST||[]).find(x=>x.name === savedMall);
+      if(mRow){ mRow.last = payload.date || mRow.last; renderMallDropdowns(); }
     })
     .catch(e=>{
       // ล้มเหลว = ไม่ลบร่าง ไม่ล้างหน้าจอ ตัวเลขที่กรอกยังอยู่ครบ กดบันทึกซ้ำได้เลย
