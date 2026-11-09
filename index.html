@@ -323,7 +323,7 @@
 <div id="app" class="hidden">
   <header>
     <h1>🏬 Stock Mall</h1>
-    <div class="who"><b id="whoName"></b><span id="whoRole"></span> · <a href="#" id="installLink" class="hidden" style="color:#fff">📲 ติดตั้ง</a> · <a href="#" id="logout" style="color:#fff">ออก</a></div>
+    <div class="who"><b id="whoName"></b><span id="whoRole"></span><span id="whoMs" style="opacity:.75"></span> · <a href="#" id="installLink" class="hidden" style="color:#fff">📲 ติดตั้ง</a> · <a href="#" id="logout" style="color:#fff">ออก</a></div>
   </header>
   <nav id="nav">
     <button data-v="dash" class="on">📊 รายงาน</button>
@@ -616,9 +616,13 @@ function apiOnce(params, cb){
   document.body.appendChild(s);
   setTimeout(()=>{ if(!done){ done=true; cleanup(); cb('หมดเวลาเชื่อมต่อ'); } }, API_TIMEOUT);
 }
+// จับเวลาคำขอล่าสุด ไว้บอกผู้ใช้ว่า "รอเซิร์ฟเวอร์" หรือ "เครื่องช้า"
+let LAST_MS = { wait: 0, bytes: 0 };
 function api(params, cb){
+  const t0 = Date.now();
   let left = API_RETRY;
   const go = ()=> apiOnce(params, (err, res)=>{
+    if(!err){ LAST_MS.wait = Date.now() - t0; try{ LAST_MS.bytes = JSON.stringify(res).length; }catch(e){ LAST_MS.bytes = 0; } }
     if(err && left > 0){ left--; setTimeout(go, 1200); return; }   // พลาด = ยิงใหม่เงียบๆ ผู้ใช้ไม่ต้องกดเอง
     cb(err, res);
   });
@@ -717,6 +721,8 @@ function startApp(){
   $('app').classList.remove('hidden');
   $('whoName').textContent = DATA.name;
   $('whoRole').textContent = ({admin:'ผู้ดูแล',staff:'พนักงาน',user:'ผู้ใช้'})[DATA.role] || DATA.role;
+  // เวลาที่ใช้ตอนเข้าระบบ — ไว้เทียบว่า admin ช้ากว่า staff/user กี่วินาที
+  if($('whoMs') && LAST_MS.wait) $('whoMs').textContent = ` · เข้าระบบ ${(LAST_MS.wait/1000).toFixed(1)} วิ (${Math.round(LAST_MS.bytes/1024)} KB)`;
 
   // ห้าง — ตัวเลือกแบบติ๊กได้หลายห้าง
   buildMallPicker(DATA.malls||[]);
@@ -839,6 +845,7 @@ function refreshData(){
     hideLoading();
     if(err || !res || !res.ok){ $('refreshMsg').textContent='โหลดไม่สำเร็จ ลองใหม่'; return; }
     DATA = res;
+    const t1 = Date.now();
     if(DATA.mallList){ MALL_LIST = DATA.mallList; renderMallDropdowns(); }
     if(DATA.products) PRODUCTS = DATA.products;
     renderHealth(DATA.health);
@@ -846,7 +853,12 @@ function refreshData(){
     applyDashData(DATA.mallStatus, DATA.recent);
     const now = new Date();
     const p = n => String(n).padStart(2,'0');
-    $('refreshMsg').textContent = `✅ ข้อมูลล่าสุด ณ ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
+    // บอกเวลาที่ใช้จริง แยก "รอเซิร์ฟเวอร์" กับ "วาดหน้าจอ" → รู้ว่าต้องไปแก้ฝั่งไหน
+    const draw = Date.now() - t1;
+    $('refreshMsg').textContent =
+      `✅ ข้อมูลล่าสุด ณ ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`
+      + ` · รอเซิร์ฟเวอร์ ${(LAST_MS.wait/1000).toFixed(1)} วิ · วาดหน้าจอ ${(draw/1000).toFixed(1)} วิ`
+      + ` · ข้อมูล ${Math.round(LAST_MS.bytes/1024)} KB`;
   });
 }
 
