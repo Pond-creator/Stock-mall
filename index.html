@@ -510,17 +510,37 @@ if('serviceWorker' in navigator){
 renderInstallUI();
 
 // ====== JSONP (เลี่ยง CORS) ======
-function api(params, cb){
+// Apps Script สุ่มพลาดเอง (ค้างยาวแล้วคาย 404) เป็นปัญหาฝั่ง Google ไม่ใช่โค้ดเรา
+// วิธีที่ได้ผลจริง: "ตัดรอบเร็ว แล้วยิงใหม่" — รอบที่ยิงใหม่มักกลับมาใน 2-3 วิ เร็วกว่านั่งรอรอบที่ค้างจนครบ
+// 15 วิ + ลองใหม่ 2 ครั้ง (รวม 3 โอกาส) ≈ สำเร็จ 94% แย่สุดผู้ใช้รอ ~48 วิ
+// ⚠️ retry ได้เพราะนี่เป็น GET (อ่านอย่างเดียว) เท่านั้น — การบันทึกใช้ POST ไม่ได้ผ่านทางนี้
+const API_TIMEOUT = 15000;
+const API_RETRY   = 2;
+function apiOnce(params, cb){
   const name = 'jsonp_' + Math.floor(Math.random()*1e9) + '_' + (api._n=(api._n||0)+1);
   const s = document.createElement('script');
   let done = false;
   window[name] = function(res){ done=true; cleanup(); cb(null, res); };
-  function cleanup(){ delete window[name]; if(s.parentNode) s.parentNode.removeChild(s); }
-  s.onerror = function(){ if(!done){ cleanup(); cb('เชื่อมต่อไม่ได้ — ตรวจ API_URL'); } };
+  // ไม่ลบ window[name] ทันที — เผื่อรอบที่เราตัดทิ้งไปแล้วตอบกลับมาทีหลัง จะได้ตกใส่ฟังก์ชันเปล่า
+  // (ถ้าลบเลย จะขึ้น error ใน console ว่าหาฟังก์ชันไม่เจอ) แล้วค่อยเก็บกวาดทีหลัง
+  function cleanup(){
+    window[name] = function(){};
+    setTimeout(()=>{ try{ delete window[name]; }catch(e){} }, 60000);
+    if(s.parentNode) s.parentNode.removeChild(s);
+  }
+  s.onerror = function(){ if(!done){ done=true; cleanup(); cb('เชื่อมต่อไม่ได้ — ตรวจ API_URL'); } };
   const qs = Object.keys(params).map(k=>encodeURIComponent(k)+'='+encodeURIComponent(params[k])).join('&');
   s.src = API_URL + '?' + qs + '&callback=' + name;
   document.body.appendChild(s);
-  setTimeout(()=>{ if(!done){ cleanup(); cb('หมดเวลาเชื่อมต่อ'); } }, 40000);  // เผื่อข้อมูลโตขึ้น (GAS อ่านชีทใหญ่ใช้เวลา)
+  setTimeout(()=>{ if(!done){ done=true; cleanup(); cb('หมดเวลาเชื่อมต่อ'); } }, API_TIMEOUT);
+}
+function api(params, cb){
+  let left = API_RETRY;
+  const go = ()=> apiOnce(params, (err, res)=>{
+    if(err && left > 0){ left--; setTimeout(go, 1200); return; }   // พลาด = ยิงใหม่เงียบๆ ผู้ใช้ไม่ต้องกดเอง
+    cb(err, res);
+  });
+  go();
 }
 
 // ====== STATE ======
@@ -627,6 +647,8 @@ function startApp(){
   // ข้อมูลที่มากับคำสั่ง init รอบเดียว (ไม่ต้องยิง API เพิ่ม)
   if(DATA.mallList) MALL_LIST = DATA.mallList;
   if(DATA.products) PRODUCTS = DATA.products;
+  // รายการเช็คล่าสุด — ทุก role ได้ (staff/user ได้แบบเบา ไม่มีขาย/หาย) ไว้โชว์ในหน้ารายงานเช็ค
+  if(DATA.recent && DATA.recent.checks) RECENT = DATA.recent.checks;
   // ตาข่ายกันพัง: ถ้า GAS ยังเป็นเวอร์ชันเก่า (ไม่รู้จัก action init) → ดึงแบบเดิมอัตโนมัติ
   const legacyGAS = !DATA.mallList;
   if(legacyGAS){
@@ -747,6 +769,9 @@ function switchView(v){
   $('viewDash').classList.toggle('hidden', v!=='dash');
   $('viewCheck').classList.toggle('hidden', v!=='check');
   $('viewHist').classList.toggle('hidden', v!=='hist');
+  // เปิดหน้ารายงานเช็คครั้งแรก + ยังไม่ได้เลือกห้าง → โชว์งานล่าสุดให้เลยโดยไม่ต้องกด
+  // (ใช้ข้อมูลที่โหลดมาตอนล็อกอินแล้ว ไม่ได้ยิงเซิร์ฟเวอร์เพิ่ม)
+  if(v==='hist' && !$('hMall').value && !HIST.rounds.length && RECENT.length) renderRecentInHist();
 }
 function setupNav(){
   $('btnRefresh').onclick = refreshData;
@@ -895,7 +920,11 @@ function loadMallStatus(mall, silent){
 }
 function renderMallStatusBox(res, mall){
   const el = $('mallStatus');
-  if(!res || !res.ok){ el.innerHTML=''; return; }
+  // อย่าเงียบ — เดิมล้างกล่องทิ้งเฉยๆ ทำให้ไล่หาสาเหตุไม่เจอ
+  if(!res || !res.ok){
+    el.innerHTML = `<div class="panel" style="font-size:13px;color:#c0392b">📦 ยอดกระทบเช็คไม่ขึ้น: ${(res && res.error) || 'เซิร์ฟเวอร์ไม่ส่งข้อมูลกลับ'}</div>`;
+    return;
+  }
   if(!res.hasCheck){
     el.innerHTML = (mall==='__ALL__'||res.all)
       ? '<div class="panel" style="font-size:13px;color:var(--muted)">📦 ยังไม่มีห้างไหนเช็คสต็อก — ยอดคงเหลือด้านบนเป็นตามบัญชี (จ่าย−รับ)</div>'
@@ -1097,8 +1126,21 @@ function renderMallDropdowns(){
   const sorted = MALL_LIST.slice().sort((a,b)=> (b.ready?1:0)-(a.ready?1:0));
   $('cMall').innerHTML = '<option value="">— เลือกห้าง —</option>' +
     sorted.map(m=>`<option value="${m.name}" ${m.ready?'':'disabled'}>${m.name}${m.ready?'':'  (ยังไม่เปิด)'}</option>`).join('');
-  if($('hMall')) $('hMall').innerHTML = '<option value="">— เลือกห้าง —</option>' +
-    MALL_LIST.filter(m=>m.ready).map(m=>`<option value="${m.name}">${m.name}</option>`).join('');
+  // หน้ารายงานเช็ค: เรียง "ห้างที่เพิ่งตรวจเช็คล่าสุด อยู่บนสุดเสมอ"
+  // (m.last = วันที่เช็คล่าสุด ส่งมาจาก GAS) → ห้างที่ยังไม่เคยเช็คไปอยู่ล่าง เรียงตามชื่อ
+  if($('hMall')){
+    const keep = $('hMall').value;   // จำห้างที่เลือกไว้ ตอน render ใหม่จะได้ไม่หลุด
+    const ready = MALL_LIST.filter(m=>m.ready).slice().sort((a,b)=>{
+      const la = a.last || '', lb = b.last || '';
+      if(la && lb) return la < lb ? 1 : (la > lb ? -1 : a.name.localeCompare(b.name));
+      if(la) return -1;
+      if(lb) return 1;
+      return a.name.localeCompare(b.name);
+    });
+    $('hMall').innerHTML = '<option value="">— เลือกห้าง —</option>' +
+      ready.map(m=>`<option value="${m.name}">${m.name}${m.last ? '  · เช็คล่าสุด ' + fmtDate(m.last) : '  · ยังไม่เคยเช็ค'}</option>`).join('');
+    if(keep) $('hMall').value = keep;
+  }
 }
 
 // โหลดรายชื่อห้างใหม่จากเซิร์ฟเวอร์ (ใช้หลังเพิ่มห้างใหม่เท่านั้น)
@@ -1371,7 +1413,7 @@ function onScan(txt){
   });
 }
 
-// ====== บันทึก (POST no-cors) ======
+// ====== บันทึก (POST + อ่านคำตอบจริงจากเซิร์ฟเวอร์) ======
 const hasCount = it => { const c=CHK.counted[it.qr]; return c!==undefined&&c!==null&&c!==''&&!isNaN(c); };
 function saveCheck(){
   // สินค้าใหม่ (เพิ่มเอง) ต้องกรอกจำนวนก่อน — ไม่งั้นบันทึกไม่ได้ เด้งไปหาให้แก้/ลบ
@@ -1421,15 +1463,27 @@ function doSave(){
     items: items
   };
   const savedMall = CHK.mall;
-  fetch(API_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(payload) })
-    .then(()=>{
+  // ⚠️ ห้ามใส่ mode:'no-cors' — ถ้าใส่ เบราว์เซอร์จะอ่านคำตอบไม่ได้เลย แล้วเราจะขึ้น "สำเร็จ" ทั้งที่
+  // ข้อมูลอาจไม่ถึงชีท (แถมลบร่างทิ้งไปแล้ว = งานนับหายเงียบ). Content-Type เป็น text/plain อยู่แล้ว
+  // จึงเป็น simple request ไม่มี preflight → ยิงแบบปกติได้เลย ฝั่ง GAS ไม่ต้องแก้อะไร
+  fetch(API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(payload) })
+    .then(r=>r.json())
+    .then(res=>{
+      if(!res || !res.ok) throw new Error((res && res.error) || 'เซิร์ฟเวอร์ไม่รับข้อมูล');
       hideLoading();
-      clearDraft(savedMall);   // บันทึกจริงแล้ว ลบร่าง
+      clearDraft(savedMall);   // เซิร์ฟเวอร์ยืนยันแล้วเท่านั้น ถึงลบร่าง
       resetCheck();   // เด้งกลับสถานะเริ่มต้น (เหมือนก่อนเลือกห้าง)
       $('cStatus').style.color = '#0b8043';
-      $('cStatus').textContent = `✅ บันทึกผลเช็ค "${savedMall}" เรียบร้อยแล้ว`;
+      $('cStatus').textContent = `✅ บันทึกผลเช็ค "${savedMall}" เรียบร้อยแล้ว (${res.saved||0} รายการ)`;
     })
-    .catch(()=>{ hideLoading(); $('cSaveMsg').style.color='#c0392b'; $('cSaveMsg').textContent='บันทึกไม่สำเร็จ ลองใหม่'; });
+    .catch(e=>{
+      // ล้มเหลว = ไม่ลบร่าง ไม่ล้างหน้าจอ ตัวเลขที่กรอกยังอยู่ครบ กดบันทึกซ้ำได้เลย
+      // (ฝั่ง GAS มีตัวกันซ้ำ 90 วิ — กดซ้ำด้วยข้อมูลชุดเดิมจะไม่เกิดรอบซ้อน)
+      hideLoading();
+      $('cSaveMsg').style.color='#c0392b';
+      $('cSaveMsg').innerHTML = '❌ <b>บันทึกไม่สำเร็จ — ข้อมูลที่กรอกยังอยู่ครบ</b><br>กดปุ่ม "บันทึก" อีกครั้งได้เลย'
+        + `<br><span style="font-size:12px;color:var(--muted)">สาเหตุ: ${(e && e.message) || e}</span>`;
+    });
 }
 
 // ============================================================
@@ -1441,8 +1495,10 @@ let HIST = { rounds: [], money: false };
 function setupHist(){
   // hMall เติมโดย refreshMallDropdowns() (จาก setupCheck) แล้ว
   $('hLoad').onclick = loadHistory;
-  $('hFrom').onchange = ()=>{ if(HIST.rounds.length) renderHist(); };
-  $('hTo').onchange = ()=>{ if(HIST.rounds.length) renderHist(); };
+  // เปลี่ยนช่วงวัน: ถ้ากำลังดูประวัติรายห้างอยู่ = กรองรอบ / ถ้ากำลังดูงานล่าสุดรวม = กรองรายการล่าสุด
+  const onDate = ()=>{ if(HIST.rounds.length) renderHist(); else if(!$('hMall').value && RECENT.length) renderRecentInHist(); };
+  $('hFrom').onchange = onDate;
+  $('hTo').onchange = onDate;
   $('hExport').onclick = exportMallCSV;
 }
 
@@ -1546,9 +1602,56 @@ function exportRoundCSV(roundId){
   setTimeout(()=>URL.revokeObjectURL(url), 1000);
 }
 
+// ====== ไม่ได้เลือกห้าง → โชว์ "สถานะงานล่าสุด 20 อันดับ" รวมทุกห้าง ======
+const HIST_RECENT_N = 20;
+function showRecentInHist(){
+  HIST = { rounds: [], money: false };
+  if(RECENT && RECENT.length){ renderRecentInHist(); return; }
+  // ยังไม่มีข้อมูลในเครื่อง (เช่น GAS ยังเป็นเวอร์ชันเก่า) → ดึงจากเซิร์ฟเวอร์
+  showLoading('กำลังโหลดรายการล่าสุด...');
+  api({user:CRED.user, pass:CRED.pass, action:'recentchecks'}, (err,res)=>{
+    hideLoading();
+    if(err || !res || !res.ok){
+      $('hStatus').style.color='#c0392b';
+      $('hStatus').textContent = 'โหลดรายการล่าสุดไม่สำเร็จ: ' + (err || (res && res.error) || 'ไม่ทราบสาเหตุ');
+      return;
+    }
+    RECENT = res.checks || [];
+    renderRecentInHist();
+  });
+}
+function renderRecentInHist(){
+  const from=$('hFrom').value, to=$('hTo').value;
+  const rows = RECENT.filter(r=>(!from||r.date>=from)&&(!to||r.date<=to)).slice(0, HIST_RECENT_N);
+  $('hStatus').style.color='';
+  if(!rows.length){
+    $('hStatus').textContent = (from||to) ? 'ไม่มีรอบเช็คในช่วงวันที่เลือก' : 'ยังไม่มีการเช็คสต็อก';
+    $('hPanel').classList.add('hidden');
+    return;
+  }
+  $('hStatus').textContent = '';
+  const showSold  = rows.some(r=>r.soldQty!==undefined);
+  const showMoney = rows.some(r=>r.soldVal!==undefined);
+  let h = `<div class="panel"><h3>🕘 สถานะงานล่าสุด ${rows.length} อันดับ (ทุกห้าง)</h3>
+    <div style="font-size:12px;color:var(--muted);margin:-4px 0 10px">แตะที่แถวเพื่อดูประวัติรายตัวของห้างนั้น</div>
+    <div class="tblwrap"><table><tr><th>วันที่</th><th>ห้าง</th><th>ประเภท</th><th>ผู้เช็ค</th><th>รายการ</th>${showSold?'<th>ขาย/หาย</th>':''}${showMoney?'<th>มูลค่า</th>':''}</tr>`;
+  rows.forEach(r=>{
+    const badge = r.type==='base' ? '<span class="badge base">ตั้งเบส</span>' : '<span class="badge check">รอบตรวจ</span>';
+    h += `<tr class="histRecentRow" data-mall="${r.mall}" style="cursor:pointer"><td>${fmtDate(r.date)}</td><td class="k">${r.mall}</td><td>${badge}</td><td>${r.user||''}</td><td>${fmt(r.itemCount)}</td>`
+       + (showSold ? `<td style="color:${r.soldQty>0?'#c0392b':'inherit'}">${fmt(r.soldQty)}</td>` : '')
+       + (showMoney ? `<td>${fmtM(r.soldVal||0)}</td>` : '') + '</tr>';
+  });
+  h += '</table></div></div>';
+  $('hRounds').innerHTML = h;
+  $('hPanel').classList.remove('hidden');
+  $('hRounds').querySelectorAll('.histRecentRow').forEach(tr=>{
+    tr.onclick = ()=>{ $('hMall').value = tr.dataset.mall; loadHistory(); };
+  });
+}
+
 function loadHistory(){
   const mall = $('hMall').value;
-  if(!mall){ $('hStatus').textContent='เลือกห้างก่อน'; return; }
+  if(!mall){ showRecentInHist(); return; }   // ไม่ได้เลือกห้าง = โชว์งานล่าสุดรวมทุกห้างแทน
   $('hPanel').classList.add('hidden');
   showLoading('กำลังโหลดประวัติ...');
   api({user:CRED.user, pass:CRED.pass, action:'checkhistory', mall:mall}, (err,res)=>{

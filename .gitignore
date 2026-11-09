@@ -1,0 +1,15 @@
+# ⚠️ repo นี้เป็น PUBLIC — ไฟล์ด้านล่างห้ามขึ้น GitHub เด็ดขาด
+# ขึ้นได้เฉพาะไฟล์หน้าเว็บที่ GitHub Pages ต้องใช้ (index.html, sw.js, manifest.json, icon*)
+
+# ข้อมูลสต็อกจริงของบริษัท
+*.xlsx
+*.xls
+*.csv
+
+# โค้ดฝั่งเซิร์ฟเวอร์ (อยู่ใน Apps Script ไม่ต้องขึ้นเว็บ)
+StockMall_GAS.js
+
+# ไฟล์สำรองก่อนแก้
+_backup/
+*.bak
+*.bak-*
