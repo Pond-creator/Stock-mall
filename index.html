@@ -180,6 +180,14 @@
   }
   .chkrow .sold{width:60px;text-align:center;font-weight:700}
   .sold.pos{color:#c0392b} .sold.zero{color:#0b8043}
+  /* แถบเตือนสุขภาพข้อมูล — แดง=ห้ามใช้ตัวเลข / เหลือง=ใช้ได้แต่ควรดู */
+  #healthBar{margin:12px 14px 0;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.55}
+  #healthBar.crit{background:#fde7e9;border:1px solid #e9a2a8;color:#8e1b24}
+  #healthBar.warn{background:#fff4ce;border:1px solid #e3c96a;color:#6b5200}
+  /* เฉพาะหัวข้อบรรทัดแรกที่เป็น block — ตัวหนาในย่อหน้าอื่นต้องอยู่ในบรรทัดเดิม */
+  #healthBar > b:first-child{display:block;font-size:14px;margin-bottom:4px}
+  #healthBar ul{margin:6px 0 0;padding-left:20px}
+  #healthBar li{margin:3px 0}
   .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}
   .badge.base{background:#fde9d0;color:#b9600f} .badge.check{background:#d7e9d2;color:#2e6b1f}
   .notready{opacity:.5;font-size:12px;color:var(--muted)}
@@ -269,6 +277,8 @@
     <button data-v="hist" id="navHist">📈 รายงานเช็ค</button>
     <button data-v="check" id="navCheck">📦 เช็คสต็อก</button>
   </nav>
+  <!-- แถบเตือนสุขภาพข้อมูลต้นทาง (Base-out/Base-in เป็น IMPORTRANGE จึงพังเงียบได้) -->
+  <div id="healthBar" class="hidden"></div>
   <div style="text-align:center;padding:12px 14px 0">
     <button id="btnRefresh" style="border:0;background:#0b8043;color:#fff;font-weight:700;font-size:14px;padding:10px 22px;border-radius:20px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.12)">🔄 โหลดข้อมูลล่าสุด (กดก่อนใช้งาน)</button>
     <div id="refreshMsg" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
@@ -649,6 +659,7 @@ function startApp(){
   if(DATA.products) PRODUCTS = DATA.products;
   // รายการเช็คล่าสุด — ทุก role ได้ (staff/user ได้แบบเบา ไม่มีขาย/หาย) ไว้โชว์ในหน้ารายงานเช็ค
   if(DATA.recent && DATA.recent.checks) RECENT = DATA.recent.checks;
+  renderHealth(DATA.health);
   // ตาข่ายกันพัง: ถ้า GAS ยังเป็นเวอร์ชันเก่า (ไม่รู้จัก action init) → ดึงแบบเดิมอัตโนมัติ
   const legacyGAS = !DATA.mallList;
   if(legacyGAS){
@@ -755,12 +766,32 @@ function refreshData(){
     DATA = res;
     if(DATA.mallList){ MALL_LIST = DATA.mallList; renderMallDropdowns(); }
     if(DATA.products) PRODUCTS = DATA.products;
+    renderHealth(DATA.health);
     render();
     applyDashData(DATA.mallStatus, DATA.recent);
     const now = new Date();
     const p = n => String(n).padStart(2,'0');
     $('refreshMsg').textContent = `✅ ข้อมูลล่าสุด ณ ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
   });
+}
+
+// ====== แถบเตือนสุขภาพข้อมูลต้นทาง ======
+// Base-out/Base-in ไม่ได้พิมพ์เอง แต่ดึงจากไฟล์อื่นด้วย IMPORTRANGE ทีละปี
+// เวลามันพัง (สิทธิ์หลุด/ต้นทางเปลี่ยนแท็บ/ยังโหลดไม่เสร็จ) มัน "ไม่ขึ้น error" แต่ข้อมูลหาย
+// → ตัวเลขทั้งระบบจะผิดเงียบๆ ถ้าไม่มีแถบนี้คอยบอก คนใช้จะไม่มีทางรู้
+function renderHealth(h){
+  const el = $('healthBar');
+  if(!el) return;
+  if(!h || h.level === 'ok' || !h.issues || !h.issues.length){
+    el.className = 'hidden'; el.innerHTML = ''; return;
+  }
+  const crit = h.level === 'crit' || h.level === 'critical';
+  el.className = crit ? 'crit' : 'warn';
+  el.innerHTML = (crit
+      ? '<b>⛔ ข้อมูลต้นทางมีปัญหา — อย่าเพิ่งใช้ตัวเลขในหน้านี้</b>'
+      : '<b>⚠️ ข้อมูลต้นทางน่าสงสัย — ดูให้แน่ใจก่อนใช้ตัวเลข</b>')
+    + '<ul>' + h.issues.map(i=>`<li>${i.msg}</li>`).join('') + '</ul>'
+    + (crit ? '<div style="margin-top:8px">กด <b>🔄 โหลดข้อมูลล่าสุด</b> อีกครั้งหลังรอสัก 1 นาที ถ้ายังขึ้นเหมือนเดิม แปลว่าไฟล์ต้นทางมีปัญหาจริง ต้องแจ้งแอดมิน</div>' : '');
 }
 
 // ====== สลับหน้า ======
@@ -1203,8 +1234,15 @@ function loadExpected(){
   showLoading('กำลังโหลดรายการ...');
   api({user:CRED.user, pass:CRED.pass, action:'expected', mall:mall}, (err,res)=>{
     hideLoading();
-    if(err){ $('cStatus').textContent=err; return; }
-    if(!res.ok){ $('cStatus').textContent=res.error||'โหลดไม่ได้'; return; }
+    if(err){ $('cStatus').style.color='#c0392b'; $('cStatus').textContent=err; return; }
+    if(!res.ok){
+      // ข้อมูลต้นทางพัง = เซิร์ฟเวอร์บล็อกไม่ให้โหลด (กันทีมเดินนับด้วยยอด "ควรมี" ที่ผิด)
+      $('cStatus').style.color='#c0392b';
+      $('cStatus').textContent=res.error||'โหลดไม่ได้';
+      if(res.health) renderHealth(res.health);
+      return;
+    }
+    $('cStatus').style.color='';
     CHK = { items: res.items, counted: {}, notes: {}, mall: mall, hasBaseline: res.hasBaseline, money: res.canSeeMoney };
     $('cStatus').textContent = '';
     $('cType').innerHTML = res.hasBaseline
