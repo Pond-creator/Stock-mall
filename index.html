@@ -181,6 +181,16 @@
   .chkrow .sold{width:60px;text-align:center;font-weight:700}
   .sold.pos{color:#c0392b} .sold.zero{color:#0b8043}
   /* แถบเตือนสุขภาพข้อมูล — แดง=ห้ามใช้ตัวเลข / เหลือง=ใช้ได้แต่ควรดู */
+  /* ===== แถบสถานะเน็ต (ออฟไลน์ / กลับมาออนไลน์) ===== */
+  #netBar{margin:12px 14px 0;border-radius:10px;padding:11px 14px;font-size:13px;line-height:1.5}
+  #netBar.off{background:#ffe8cc;border:1px solid #e0a95f;color:#7a4a05}
+  #netBar.on{background:#e7f4e4;border:1px solid #a9d39c;color:#245c17}
+  /* เฉพาะหัวข้อบรรทัดแรก — ตัวหนาในย่อหน้าต้องอยู่บรรทัดเดิม (กับดักเดียวกับ #healthBar) */
+  #netBar > b:first-child{display:block;font-size:13.5px;margin-bottom:2px}
+  /* ===== ป้ายเตือนว่ารายการที่โหลดมาเป็นของเก่าในเครื่อง ===== */
+  #cStale{background:#fff4ce;border:1px solid #e3c96a;color:#6b5200;border-radius:10px;
+          padding:11px 13px;font-size:12.5px;line-height:1.55;margin-bottom:10px}
+  #cStale b{display:block;margin-bottom:3px;font-size:13px}
   #healthBar{margin:12px 14px 0;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.55}
   #healthBar.crit{background:#fde7e9;border:1px solid #e9a2a8;color:#8e1b24}
   #healthBar.warn{background:#fff4ce;border:1px solid #e3c96a;color:#6b5200}
@@ -320,6 +330,8 @@
     <button data-v="hist" id="navHist">📈 รายงานเช็ค</button>
     <button data-v="check" id="navCheck">📦 เช็คสต็อก</button>
   </nav>
+  <!-- แถบสถานะเน็ต — บอกทันทีที่สัญญาณหลุด จะได้ไม่นับไปเป็นร้อยรายการแล้วค่อยรู้ -->
+  <div id="netBar" class="hidden"></div>
   <!-- แถบเตือนสุขภาพข้อมูลต้นทาง (Base-out/Base-in เป็น IMPORTRANGE จึงพังเงียบได้) -->
   <div id="healthBar" class="hidden"></div>
   <div style="text-align:center;padding:12px 14px 0">
@@ -425,6 +437,7 @@
     </div>
 
     <div id="cPanel" class="hidden">
+      <div id="cStale" class="hidden"></div>
       <div class="scanbox">
         <button class="bigbtn scan" id="cScanBtn">📷 เปิดกล้องสแกน QR</button>
         <div id="reader" style="margin-top:10px"></div>
@@ -746,6 +759,7 @@ function startApp(){
   setupHist();
   setupXSearch();
   setupUnmatched();
+  setupNet();
 
   // ===== สิทธิ์เข้าหน้า ตาม role =====
   // admin: รายงาน+รายงานเช็ค+เช็คสต็อก / staff: รายงานเช็ค+เช็คสต็อก / user: เช็คสต็อก
@@ -1423,6 +1437,7 @@ function submitAddMall(){
 function resetCheck(){
   stopScan();
   clearDraft(CHK.mall);  // กดเริ่มใหม่ = ทิ้งร่างของห้างนี้
+  hideStale();
   CHK = { items: [], counted: {}, notes: {}, mall: '', hasBaseline: false, money: false };
   $('cMall').value = '';
   $('cDate').value = todayStr();
@@ -1442,17 +1457,38 @@ function loadExpected(){
   showLoading('กำลังโหลดรายการ...');
   api({user:CRED.user, pass:CRED.pass, action:'expected', mall:mall}, (err,res)=>{
     hideLoading();
-    if(err){ $('cStatus').style.color='#c0392b'; $('cStatus').textContent=err; return; }
+    if(err){
+      // โหลดไม่ได้เพราะเน็ต → ถ้ามีรายการที่เคยโหลดไว้ในเครื่องและยังไม่เก่าเกิน 12 ชม. ให้ใช้ต่อได้
+      // (ตัวเลขที่คนนับเองถูกเสมอ ส่วนยอด "ควรมี" จะถูกดึงของใหม่มาทับตอนกดบันทึก — ดู doSave)
+      const cached = loadItemsCache(mall);
+      if(cached){
+        applyExpected(mall, cached, true);
+        return;
+      }
+      $('cStatus').style.color='#c0392b';
+      $('cStatus').textContent = err + (navigator.onLine ? '' : ' — ออฟไลน์อยู่ และยังไม่เคยโหลดรายการห้างนี้ไว้ในเครื่อง');
+      return;
+    }
     if(!res.ok){
       // ข้อมูลต้นทางพัง = เซิร์ฟเวอร์บล็อกไม่ให้โหลด (กันทีมเดินนับด้วยยอด "ควรมี" ที่ผิด)
+      // ⚠️ เคสนี้ห้ามใช้แคชเด็ดขาด — เซิร์ฟเวอร์ตั้งใจห้ามนับ ไม่ใช่แค่เน็ตมีปัญหา
       $('cStatus').style.color='#c0392b';
       $('cStatus').textContent=res.error||'โหลดไม่ได้';
       if(res.health) renderHealth(res.health);
       return;
     }
+    saveItemsCache(mall, res);   // โหลดสำเร็จ = เก็บไว้เผื่อครั้งหน้าเน็ตหลุด
+    applyExpected(mall, res, false);
+  });
+}
+
+// เอาผลลัพธ์ (จากเซิร์ฟเวอร์ หรือจากแคชในเครื่อง) มาขึ้นหน้าจอ
+function applyExpected(mall, res, fromCache){
     $('cStatus').style.color='';
-    CHK = { items: res.items, counted: {}, notes: {}, mall: mall, hasBaseline: res.hasBaseline, money: res.canSeeMoney };
+    CHK = { items: JSON.parse(JSON.stringify(res.items)), counted: {}, notes: {}, mall: mall,
+            hasBaseline: res.hasBaseline, money: res.canSeeMoney, fromCache: !!fromCache, cachedAt: res.t || 0 };
     $('cStatus').textContent = '';
+    if(fromCache) showStale(res.t); else hideStale();
     $('cType').innerHTML = res.hasBaseline
       ? `<span class="badge check">รอบตรวจ</span> (เทียบเบสล่าสุด ${res.lastDate})`
       : `<span class="badge base">เช็คครั้งแรก = ตั้งเบส</span> <span style="font-size:12px;color:var(--muted)">· จ่าย/รับมากระทบรอบถัดไป</span>`;
@@ -1471,8 +1507,69 @@ function loadExpected(){
         $('cStatus').textContent='✅ กู้คืนการนับค้างแล้ว';
       }, { icon:'💾', title:'กู้คืนการนับค้าง', okText:'กู้คืน', onCancel:()=>clearDraft(mall) });
     }
-  });
 }
+
+// ============================================================
+// ====== สถานะเน็ต + แคชรายการสินค้าไว้ในเครื่อง ======
+// เป้าหมาย: เน็ตหลุดกลางห้างต้องนับต่อได้ และต้องรู้ตัวทันที ไม่ใช่ไปรู้ตอนกดบันทึก
+// ทั้งหมดทำงานในเครื่องล้วนๆ — ไม่มีการยิงเซิร์ฟเวอร์เพิ่ม ไม่กินโควต้า Google
+// ============================================================
+let NET_TIMER = null;
+
+function renderNet(justCameBack){
+  const el = $('netBar'); if(!el) return;
+  clearTimeout(NET_TIMER);
+  if(!navigator.onLine){
+    el.className = 'off';
+    el.innerHTML = '<b>📵 ออฟไลน์อยู่ตอนนี้</b>'
+      + 'นับต่อได้ตามปกติ — ตัวเลขที่กรอกเซฟในเครื่องทุกครั้งที่พิมพ์แล้ว<br>'
+      + 'เมื่อมีสัญญาณอีกครั้งค่อยกด <b>บันทึก</b> ได้เลย';
+    return;
+  }
+  if(justCameBack){
+    el.className = 'on';
+    el.innerHTML = '<b>🟢 กลับมาออนไลน์แล้ว</b>บันทึกได้ตามปกติ';
+    NET_TIMER = setTimeout(()=>{ el.className = 'hidden'; el.innerHTML = ''; }, 5000);
+  } else {
+    el.className = 'hidden'; el.innerHTML = '';
+  }
+}
+function setupNet(){
+  window.addEventListener('offline', ()=>renderNet(false));
+  window.addEventListener('online',  ()=>renderNet(true));
+  renderNet(false);   // เปิดแอปมาแล้วไม่มีเน็ตอยู่แล้ว = ต้องขึ้นเลย
+}
+
+// ---- แคชรายการสินค้า (ยอด "ควรมี") ต่อห้าง ----
+const ITEMS_PREFIX = 'sm_items_';
+const ITEMS_TTL = 12 * 60 * 60 * 1000;   // 12 ชม. — เก่ากว่านี้ไม่ให้ใช้ ยอมโหลดไม่ได้ดีกว่านับด้วยเลขเก่าเกิน
+function itemsKey(mall){ return ITEMS_PREFIX + mall; }
+function saveItemsCache(mall, res){
+  try{ localStorage.setItem(itemsKey(mall), JSON.stringify({
+    items: res.items, hasBaseline: res.hasBaseline, lastDate: res.lastDate, canSeeMoney: res.canSeeMoney, t: Date.now()
+  })); }catch(e){}
+}
+function loadItemsCache(mall){
+  try{
+    const d = JSON.parse(localStorage.getItem(itemsKey(mall)) || 'null');
+    if(!d || !d.items) return null;
+    if(Date.now() - d.t > ITEMS_TTL){ localStorage.removeItem(itemsKey(mall)); return null; }
+    return d;
+  }catch(e){ return null; }
+}
+function ageText(t){
+  const m = Math.round((Date.now() - t) / 60000);
+  if(m < 60) return m + ' นาทีที่แล้ว';
+  return Math.floor(m/60) + ' ชม. ' + (m%60) + ' นาทีที่แล้ว';
+}
+function showStale(t){
+  const el = $('cStale'); if(!el) return;
+  el.className = '';
+  el.innerHTML = '<b>⚠️ กำลังใช้รายการที่เก็บไว้ในเครื่อง (โหลดเมื่อ ' + ageText(t) + ')</b>'
+    + 'เน็ตหลุดเลยโหลดของใหม่ไม่ได้ — <b>นับได้ตามปกติ ตัวเลขที่คุณนับเองถูกต้องเสมอ</b><br>'
+    + 'ตอนกดบันทึก ระบบจะดึงยอด "ควรมี" ล่าสุดมาทับให้อัตโนมัติ จึงไม่มีทางบันทึกยอดเก่าลงไป';
+}
+function hideStale(){ const el = $('cStale'); if(el){ el.className = 'hidden'; el.innerHTML = ''; } }
 
 // ====== auto-save ร่าง (กันข้อมูลหายตอนกรอกค้าง) ======
 const DRAFT_PREFIX = 'sm_draft_';
@@ -1693,6 +1790,38 @@ function saveCheck(){
 }
 
 function doSave(){
+  // 🛡️ รายการมาจากแคชในเครื่อง (ตอนนั้นเน็ตหลุด) → ต้องดึงยอด "ควรมี" ล่าสุดมาทับก่อนเสมอ
+  // เหตุผล: รายการที่ "ไม่ได้กรอก" จะถูกบันทึกด้วยค่า expected ถ้า expected เป็นของเก่า
+  // (ระหว่างนั้นมีของเข้าห้างเพิ่ม) จะกลายเป็นบันทึกว่าของหายทั้งที่ไม่ได้หาย
+  // ตัวเลขที่คนนับเองไม่ถูกแตะ — ทับเฉพาะยอดที่ระบบคำนวณให้
+  if(CHK.fromCache){
+    showLoading('กำลังดึงยอดล่าสุดก่อนบันทึก...');
+    api({user:CRED.user, pass:CRED.pass, action:'expected', mall:CHK.mall}, (err,res)=>{
+      hideLoading();
+      if(err || !res || !res.ok){
+        $('cSaveMsg').style.color='#c0392b';
+        $('cSaveMsg').innerHTML = '❌ <b>ยังบันทึกไม่ได้ — ต้องมีเน็ตก่อน</b><br>'
+          + 'ตัวเลขที่กรอกยังอยู่ครบ (เซฟในเครื่องแล้ว) กดบันทึกอีกครั้งเมื่อมีสัญญาณ'
+          + (res && res.error ? '<br><span style="font-weight:400">' + esc(res.error) + '</span>' : '');
+        return;
+      }
+      saveItemsCache(CHK.mall, res);
+      const fresh = {}; res.items.forEach(it=>fresh[it.qr] = it);
+      // ทับยอด "ควรมี" ของรายการเดิม
+      CHK.items.forEach(it=>{ if(fresh[it.qr]) it.expected = fresh[it.qr].expected; });
+      // สินค้าที่เพิ่งเข้าห้างหลังโหลดแคช — เพิ่มเข้ารายการด้วย ไม่งั้นรอบนี้จะทำให้มันหายจากเบส
+      res.items.forEach(it=>{ if(!CHK.items.find(x=>x.qr===it.qr)) CHK.items.push(JSON.parse(JSON.stringify(it))); });
+      CHK.hasBaseline = res.hasBaseline;
+      CHK.fromCache = false;
+      hideStale();
+      renderCheckList();
+      // ยอดเปลี่ยนไปแล้ว → ให้คนดูสรุปใหม่แล้วยืนยันอีกที (รอบนี้ fromCache เป็น false แล้ว ไม่วนซ้ำ)
+      $('cSaveMsg').style.color='';
+      $('cSaveMsg').innerHTML = '🔄 <b>ดึงยอดล่าสุดมาแล้ว</b> — ตัวเลขที่คุณนับยังอยู่ครบ กดบันทึกยืนยันอีกครั้ง';
+      saveCheck();
+    });
+    return;
+  }
   const items = [];
   CHK.items.forEach(it=>{
     if(hasCount(it)){
