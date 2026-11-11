@@ -198,8 +198,28 @@
   #healthBar > b:first-child{display:block;font-size:14px;margin-bottom:4px}
   #healthBar ul{margin:6px 0 0;padding-left:20px}
   #healthBar li{margin:3px 0}
-  /* ===== การ์ดเตือนห้างที่ค้างไม่ได้เช็ค (หน้ารายงานเช็ค) ===== */
-  #odBox{border-radius:12px;padding:13px 14px;margin-bottom:14px;font-size:13px;line-height:1.5}
+  /* ===== กระดิ่งเตือนห้างค้าง — ลอยอยู่มุมขวา ไม่กินพื้นที่หน้าจอ ===== */
+  #odBell{position:fixed;right:14px;bottom:20px;z-index:55;width:52px;height:52px;border-radius:50%;
+          border:0;background:#c0392b;color:#fff;font-size:23px;cursor:pointer;display:none;
+          align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,.3)}
+  #odBell.show{display:flex}
+  #odBell.lv-due{background:#d4a017}
+  #odBell:active{transform:scale(.94)}
+  #odBell .n{position:absolute;top:-3px;right:-3px;min-width:21px;height:21px;border-radius:11px;
+             background:#fff;color:#c0392b;font-size:11px;font-weight:800;padding:0 5px;
+             display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+  #odBell.lv-due .n{color:#8a6500}
+  #odPop{position:fixed;right:14px;bottom:82px;z-index:56;width:min(380px,calc(100vw - 28px));
+         max-height:min(62vh,520px);overflow:auto;display:none;border-radius:12px;
+         box-shadow:0 8px 28px rgba(0,0,0,.28)}
+  #odPop.show{display:block}
+  #odPopBg{position:fixed;inset:0;z-index:54;display:none;background:rgba(0,0,0,.18)}
+  #odPopBg.show{display:block}
+  /* ===== การ์ดเตือนห้างที่ค้างไม่ได้เช็ค (เนื้อในป๊อปอัป) ===== */
+  #odBox{border-radius:12px;padding:13px 14px;font-size:13px;line-height:1.5}
+  #odClose{position:absolute;top:7px;right:9px;border:0;background:rgba(255,255,255,.75);
+           border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:14px;line-height:1;color:#555}
+  .odgrp{font-size:11.5px;font-weight:700;opacity:.8;margin:9px 0 3px}
   #odBox.ok{background:#e7f4e4;border:1px solid #a9d39c;color:#245c17}
   #odBox.due{background:#fff4ce;border:1px solid #e3c96a;color:#6b5200}
   #odBox.late{background:#fde7e9;border:1px solid #e9a2a8;color:#8e1b24}
@@ -455,6 +475,12 @@
     </div>
   </div>
 
+  <!-- เตือนห้างที่ค้างไม่ได้เช็คนาน — ลอยเป็นกระดิ่ง ไม่กินพื้นที่หน้าจอ
+       ใช้วันที่เช็คล่าสุดที่โหลดมาตอนล็อกอินแล้ว ไม่ยิงเซิร์ฟเวอร์เพิ่ม -->
+  <div id="odPopBg"></div>
+  <button id="odBell" title="ห้างที่ควรเช็ค"><span>🔔</span><span class="n" id="odNum">0</span></button>
+  <div id="odPop"><div id="odBox"></div></div>
+
   <!-- ===== VIEW: รายงานเช็ค ===== -->
   <div id="viewHist" class="wrap hidden">
     <!-- ค้นหาสินค้าข้ามห้าง (admin + staff) — admin ใช้ข้อมูลที่โหลดมาแล้ว
@@ -464,8 +490,7 @@
       <input id="xsQ" placeholder="พิมพ์ชื่อสินค้า หรือ QR code">
       <div id="xsOut"></div>
     </div>
-    <!-- เตือนห้างที่ค้างไม่ได้เช็คนาน — ใช้วันที่เช็คล่าสุดที่โหลดมาตอนล็อกอินแล้ว ไม่ยิงเซิร์ฟเวอร์เพิ่ม -->
-    <div id="odBox" class="hidden"></div>
+
     <div class="scanbox">
       <label>เลือกห้าง</label>
       <div style="display:flex;gap:8px;align-items:stretch">
@@ -476,7 +501,7 @@
         <div><label>จากวันที่</label><input id="hFrom" type="date"></div>
         <div><label>ถึงวันที่</label><input id="hTo" type="date"></div>
       </div>
-      <button class="bigbtn ghost" id="hLoad" style="margin-top:10px">ดูประวัติการเช็ค</button>
+      <button class="bigbtn ghost" id="hLoad" style="margin-top:10px">🔄 โหลดประวัติใหม่</button>
       <div id="hStatus" style="font-size:13px;color:var(--muted);margin-top:8px;text-align:center"></div>
     </div>
     <div id="hPanel" class="hidden">
@@ -777,6 +802,7 @@ function startApp(){
   setupXSearch();
   setupUnmatched();
   setupNet();
+  setupOdBell();
 
   // ===== สิทธิ์เข้าหน้า ตาม role =====
   // admin: รายงาน+รายงานเช็ค+เช็คสต็อก / staff: รายงานเช็ค+เช็คสต็อก / user: เช็คสต็อก
@@ -915,11 +941,25 @@ function daysSince(ymd){
   return Math.round((a - d) / 86400000);
 }
 
+// เปิด/ปิดป๊อปอัปกระดิ่ง
+function odOpen(on){
+  const pop=$('odPop'), bg=$('odPopBg');
+  if(!pop) return;
+  pop.classList.toggle('show', on);
+  if(bg) bg.classList.toggle('show', on);
+}
+function setupOdBell(){
+  const b=$('odBell'), bg=$('odPopBg');
+  if(!b) return;
+  b.onclick = ()=> odOpen(!$('odPop').classList.contains('show'));
+  if(bg) bg.onclick = ()=> odOpen(false);
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') odOpen(false); });
+}
+
 function renderOverdue(){
-  const el = $('odBox');
-  if(!el) return;
+  const el = $('odBox'), bell = $('odBell');
+  if(!el || !bell) return;
   const ready = (MALL_LIST||[]).filter(m=>m.ready);
-  if(!ready.length){ el.className='hidden'; el.innerHTML=''; return; }
 
   const late=[], due=[], never=[];
   ready.forEach(m=>{
@@ -929,44 +969,55 @@ function renderOverdue(){
     if(n >= OD_LATE) late.push({m:m, n:n});
     else if(n >= OD_DUE) due.push({m:m, n:n});
   });
-  // ห้างที่ไม่เคยเช็คเลย = งานค้างเหมือนกัน แต่ไม่มีวันให้เทียบ → จัดอยู่กลุ่มท้ายสุด
-  const items = late.concat(due).sort((a,b)=>b.n-a.n)
-    .concat(never.map(m=>({m:m, n:null})));
+  // เรียง "ค้างนานสุด" ขึ้นก่อน — ห้างที่ยังไม่เคยเช็คแยกเป็นอีกกลุ่ม (ส่วนใหญ่คือห้างที่เปิดรอไว้ ยังไม่ใช่งานค้างจริง)
+  const dueList = late.concat(due).sort((a,b)=>b.n-a.n);
+  const nAction = dueList.length;
 
-  if(!items.length){
-    el.className = 'ok';
-    el.innerHTML = `<div class="odt">✅ ทุกห้างเช็คครบภายใน ${OD_DUE} วัน</div>`
-      + `<div style="font-size:12px">เปิดอยู่ ${ready.length} ห้าง — ไม่มีห้างไหนค้าง</div>`;
+  // ไม่มีอะไรต้องเตือน = ซ่อนกระดิ่งไปเลย ไม่ให้รกหน้าจอ
+  if(!nAction && !never.length){
+    bell.className = ''; odOpen(false); el.className = 'ok'; el.innerHTML = '';
     return;
   }
 
-  const nLate = late.length, nNever = never.length;
-  el.className = (nLate || nNever) ? 'late' : 'due';
-  const head = (nLate || nNever)
-    ? `🔴 มี ${items.length} ห้างที่ควรเช็คแล้ว`
-    : `🟡 มี ${items.length} ห้างใกล้ถึงรอบเช็ค`;
+  // สีกระดิ่ง: แดงถ้ามีห้างเกิน 30 วัน / เหลืองถ้าแค่ใกล้ถึงรอบ
+  const red = late.length > 0;
+  bell.className = 'show' + (red ? '' : (nAction ? ' lv-due' : ' lv-due'));
+  $('odNum').textContent = nAction ? nAction : never.length;
 
-  const shown = items.slice(0, OD_SHOW);
-  const rest  = items.length - shown.length;
-  el.innerHTML = `<div class="odt">${head}</div>`
-    + shown.map(it=>{
-        const cls = it.n === null ? 'never' : (it.n >= OD_LATE ? 'late' : 'due');
-        const txt = it.n === null ? 'ยังไม่เคยเช็ค'
-                                  : `${it.n} วันแล้ว · ${fmtDate(it.m.last)}`;
-        return `<button class="odrow" data-mall="${escAttr(it.m.name)}">`
-             + `<span class="oddot ${cls}"></span>`
-             + `<span class="odn">${esc(it.m.name)}</span>`
-             + `<span class="odd">${txt}</span></button>`;
-      }).join('')
-    + (rest > 0 ? `<div style="font-size:12px;margin-top:7px">…และอีก ${rest} ห้าง</div>` : '')
-    + `<div style="font-size:12px;margin-top:8px;opacity:.85">กดชื่อห้างเพื่อดูประวัติการเช็คของห้างนั้น</div>`;
+  el.className = red ? 'late' : 'due';
+  const row = (m, n)=>{
+    const cls = n === null ? 'never' : (n >= OD_LATE ? 'late' : 'due');
+    const txt = n === null ? 'ยังไม่เคยเช็ค' : `${n} วันแล้ว · ${fmtDate(m.last)}`;
+    return `<button class="odrow" data-mall="${escAttr(m.name)}">`
+         + `<span class="oddot ${cls}"></span><span class="odn">${esc(m.name)}</span>`
+         + `<span class="odd">${txt}</span></button>`;
+  };
 
+  let html = `<button id="odClose" title="ปิด">✕</button>`;
+  if(nAction){
+    html += `<div class="odt">${red ? '🔴' : '🟡'} ${nAction} ห้างที่ควรเช็คแล้ว</div>`
+          + dueList.map(it=>row(it.m, it.n)).join('');
+  } else {
+    html += `<div class="odt">✅ ห้างที่เปิดใช้อยู่เช็คครบภายใน ${OD_DUE} วัน</div>`;
+  }
+  if(never.length){
+    html += `<div class="odgrp">— ยังไม่เคยเช็ค ${never.length} ห้าง (ส่วนใหญ่คือห้างที่เปิดรอไว้) —</div>`
+          + never.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(m=>row(m, null)).join('');
+  }
+  html += `<div style="font-size:12px;margin-top:9px;opacity:.85">กดชื่อห้างเพื่อดูประวัติการเช็คของห้างนั้น</div>`;
+  el.innerHTML = html;
+
+  const cl = $('odClose'); if(cl) cl.onclick = ()=> odOpen(false);
   // กดแล้วเลือกห้างในช่องด้านล่าง + โหลดประวัติให้เลย
   el.querySelectorAll('.odrow').forEach(b=>{
     b.onclick = ()=>{
       const name = b.dataset.mall;
-      if($('hMall')){ $('hMall').value = name; }
-      if($('hMall') && $('hMall').value === name) loadHistory();
+      if($('hMall')){
+        $('hMall').value = name;
+        if($('hMall').value === name) loadHistory();
+      }
+      odOpen(false);
+      switchView('hist');
     };
   });
 }
@@ -1932,6 +1983,8 @@ let HIST = { rounds: [], money: false };
 function setupHist(){
   // hMall เติมโดย refreshMallDropdowns() (จาก setupCheck) แล้ว
   $('hLoad').onclick = loadHistory;
+  // เลือกห้าง = โหลดให้เลย ไม่ต้องกดปุ่มซ้ำ (ปุ่มเหลือไว้สำหรับ "โหลดใหม่" ห้างเดิม)
+  $('hMall').onchange = loadHistory;
   // เปลี่ยนช่วงวัน: ถ้ากำลังดูประวัติรายห้างอยู่ = กรองรอบ / ถ้ากำลังดูงานล่าสุดรวม = กรองรายการล่าสุด
   const onDate = ()=>{ if(HIST.rounds.length) renderHist(); else if(!$('hMall').value && RECENT.length) renderRecentInHist(); };
   $('hFrom').onchange = onDate;
@@ -2086,15 +2139,21 @@ function renderRecentInHist(){
   });
 }
 
+// นับรอบคำขอ — เปลี่ยนห้างเร็วๆ หลายครั้ง คำตอบของรอบเก่าต้องไม่มาทับรอบใหม่
+let HIST_SEQ = 0;
 function loadHistory(){
   const mall = $('hMall').value;
-  if(!mall){ showRecentInHist(); return; }   // ไม่ได้เลือกห้าง = โชว์งานล่าสุดรวมทุกห้างแทน
+  const seq = ++HIST_SEQ;
+  if(!mall){ hideLoading(); showRecentInHist(); return; }   // ไม่ได้เลือกห้าง = โชว์งานล่าสุดรวมทุกห้างแทน
   $('hPanel').classList.add('hidden');
+  $('hStatus').style.color = '';
+  $('hStatus').textContent = `กำลังโหลดประวัติของ "${mall}"...`;
   showLoading('กำลังโหลดประวัติ...');
   api({user:CRED.user, pass:CRED.pass, action:'checkhistory', mall:mall}, (err,res)=>{
+    if(seq !== HIST_SEQ) return;        // มีการเลือกห้างใหม่ไปแล้ว → ทิ้งคำตอบรอบนี้
     hideLoading();
-    if(err){ $('hStatus').textContent=err; return; }
-    if(!res.ok){ $('hStatus').textContent=res.error||'โหลดไม่ได้'; return; }
+    if(err){ $('hStatus').style.color='#c0392b'; $('hStatus').textContent=err; return; }
+    if(!res.ok){ $('hStatus').style.color='#c0392b'; $('hStatus').textContent=res.error||'โหลดไม่ได้'; return; }
     if(!res.rounds.length){ $('hStatus').textContent='ยังไม่มีประวัติการเช็คของห้างนี้'; return; }
     HIST = { rounds: res.rounds, money: res.canSeeMoney };
     $('hStatus').textContent = '';
