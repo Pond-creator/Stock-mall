@@ -199,17 +199,17 @@
   #healthBar ul{margin:6px 0 0;padding-left:20px}
   #healthBar li{margin:3px 0}
   /* ===== กระดิ่งเตือนห้างค้าง — ลอยอยู่มุมขวา ไม่กินพื้นที่หน้าจอ ===== */
-  #odBell{position:fixed;right:14px;bottom:20px;z-index:55;width:52px;height:52px;border-radius:50%;
+  #odBell{position:fixed;left:14px;bottom:20px;z-index:55;width:52px;height:52px;border-radius:50%;
           border:0;background:#c0392b;color:#fff;font-size:23px;cursor:pointer;display:none;
           align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,.3)}
   #odBell.show{display:flex}
   #odBell.lv-due{background:#d4a017}
   #odBell:active{transform:scale(.94)}
-  #odBell .n{position:absolute;top:-3px;right:-3px;min-width:21px;height:21px;border-radius:11px;
+  #odBell .n{position:absolute;top:-3px;left:-3px;min-width:21px;height:21px;border-radius:11px;
              background:#fff;color:#c0392b;font-size:11px;font-weight:800;padding:0 5px;
              display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.25)}
   #odBell.lv-due .n{color:#8a6500}
-  #odPop{position:fixed;right:14px;bottom:82px;z-index:56;width:min(380px,calc(100vw - 28px));
+  #odPop{position:fixed;left:14px;bottom:82px;z-index:56;width:min(380px,calc(100vw - 28px));
          max-height:min(62vh,520px);overflow:auto;display:none;border-radius:12px;
          box-shadow:0 8px 28px rgba(0,0,0,.28)}
   #odPop.show{display:block}
@@ -941,6 +941,19 @@ function daysSince(ymd){
   return Math.round((a - d) / 86400000);
 }
 
+// กระดิ่งโชว์เฉพาะ "หน้ารายงานเช็ค" เท่านั้น — ไม่ให้ไปบังหน้าเช็คสต็อก (มีปุ่มสแกนลอยอยู่แล้ว)
+let OD_HAS  = false;     // มีห้างค้างให้เตือนไหม
+let OD_CLS  = '';        // สีกระดิ่ง (แดง/เหลือง)
+let OD_SEEN = false;     // ดูไปแล้วรอบนี้ → ซ่อนกระดิ่ง จะกลับมาตอนรีเฟรช/เปิดแอปใหม่
+function odApplyView(){
+  const bell = $('odBell'); if(!bell) return;
+  const onHist = !$('viewHist').classList.contains('hidden');
+  if(OD_HAS && onHist && !OD_SEEN){ bell.className = OD_CLS; }
+  else { bell.className = ''; odOpen(false); }
+}
+// ผู้ใช้ปิดเอง = ถือว่าดูแล้ว (ต่างจาก odOpen(false) ตอนสลับหน้า ซึ่งไม่นับว่าดู)
+function odDismiss(){ odOpen(false); OD_SEEN = true; odApplyView(); }
+
 // เปิด/ปิดป๊อปอัปกระดิ่ง
 function odOpen(on){
   const pop=$('odPop'), bg=$('odPopBg');
@@ -951,9 +964,9 @@ function odOpen(on){
 function setupOdBell(){
   const b=$('odBell'), bg=$('odPopBg');
   if(!b) return;
-  b.onclick = ()=> odOpen(!$('odPop').classList.contains('show'));
-  if(bg) bg.onclick = ()=> odOpen(false);
-  document.addEventListener('keydown', e=>{ if(e.key==='Escape') odOpen(false); });
+  b.onclick = ()=>{ const open=$('odPop').classList.contains('show'); if(open) odDismiss(); else odOpen(true); };
+  if(bg) bg.onclick = odDismiss;
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape' && $('odPop').classList.contains('show')) odDismiss(); });
 }
 
 function renderOverdue(){
@@ -975,13 +988,15 @@ function renderOverdue(){
 
   // ไม่มีอะไรต้องเตือน = ซ่อนกระดิ่งไปเลย ไม่ให้รกหน้าจอ
   if(!nAction && !never.length){
-    bell.className = ''; odOpen(false); el.className = 'ok'; el.innerHTML = '';
+    OD_HAS = false; OD_CLS = ''; odApplyView(); el.className = 'ok'; el.innerHTML = '';
     return;
   }
 
   // สีกระดิ่ง: แดงถ้ามีห้างเกิน 30 วัน / เหลืองถ้าแค่ใกล้ถึงรอบ
   const red = late.length > 0;
-  bell.className = 'show' + (red ? '' : (nAction ? ' lv-due' : ' lv-due'));
+  OD_HAS = true;
+  OD_CLS = 'show' + (red ? '' : ' lv-due');
+  odApplyView();
   $('odNum').textContent = nAction ? nAction : never.length;
 
   el.className = red ? 'late' : 'due';
@@ -1007,7 +1022,7 @@ function renderOverdue(){
   html += `<div style="font-size:12px;margin-top:9px;opacity:.85">กดชื่อห้างเพื่อดูประวัติการเช็คของห้างนั้น</div>`;
   el.innerHTML = html;
 
-  const cl = $('odClose'); if(cl) cl.onclick = ()=> odOpen(false);
+  const cl = $('odClose'); if(cl) cl.onclick = odDismiss;
   // กดแล้วเลือกห้างในช่องด้านล่าง + โหลดประวัติให้เลย
   el.querySelectorAll('.odrow').forEach(b=>{
     b.onclick = ()=>{
@@ -1016,7 +1031,7 @@ function renderOverdue(){
         $('hMall').value = name;
         if($('hMall').value === name) loadHistory();
       }
-      odOpen(false);
+      odDismiss();
       switchView('hist');
     };
   });
@@ -1133,6 +1148,7 @@ function switchView(v){
   // (ใช้ข้อมูลที่โหลดมาตอนล็อกอินแล้ว ไม่ได้ยิงเซิร์ฟเวอร์เพิ่ม)
   if(v==='hist' && !$('hMall').value && !HIST.rounds.length && RECENT.length) renderRecentInHist();
   if(v==='hist') renderOverdue();   // เปิดค้างข้ามวัน ตัวเลข "กี่วันแล้ว" จะได้ไม่ค้างของเมื่อวาน
+  odApplyView();                    // ออกจากหน้ารายงานเช็ค = ซ่อนกระดิ่ง + ปิดป๊อปอัป
 }
 function setupNav(){
   $('btnRefresh').onclick = refreshData;
