@@ -596,9 +596,17 @@ renderInstallUI();
 // วิธีที่ได้ผลจริง: "ตัดรอบเร็ว แล้วยิงใหม่" — รอบที่ยิงใหม่มักกลับมาใน 2-3 วิ เร็วกว่านั่งรอรอบที่ค้างจนครบ
 // 15 วิ + ลองใหม่ 2 ครั้ง (รวม 3 โอกาส) ≈ สำเร็จ 94% แย่สุดผู้ใช้รอ ~48 วิ
 // ⚠️ retry ได้เพราะนี่เป็น GET (อ่านอย่างเดียว) เท่านั้น — การบันทึกใช้ POST ไม่ได้ผ่านทางนี้
-const API_TIMEOUT = 15000;
-const API_RETRY   = 2;
-function apiOnce(params, cb){
+// ⚠️ เดิมตั้งเวลารอไว้ 15 วิเท่ากันทุกคำสั่ง — แต่คำสั่งที่ต้องอ่าน Base-out/Base-in (33,500 แถว)
+// ใช้เวลาปกติ 11-25 วิ → admin ล็อกอินแล้วขึ้น "หมดเวลาเชื่อมต่อ" ทั้งที่เซิร์ฟเวอร์ทำงานอยู่ดีๆ
+// (และยังอธิบายเรื่องที่วัดได้ 25 วิด้วย: รอบแรกหมดเวลาที่ 15 วิ → ยิงใหม่ → รอบสองสำเร็จ = 25 วิ)
+const API_TIMEOUT       = 15000;   // คำสั่งเบา (ล็อกอินของ staff/user, รายชื่อห้าง ฯลฯ)
+const API_TIMEOUT_HEAVY = 90000;   // คำสั่งที่ต้องอ่านชีทใหญ่ — ให้เวลาเหลือเฟือ ดีกว่าตัดทิ้งทั้งที่กำลังจะเสร็จ
+const API_RETRY         = 2;
+const API_RETRY_HEAVY   = 1;       // งานหนักยิงซ้ำแพงมาก (เซิร์ฟเวอร์ต้องอ่านชีทใหม่ทั้งรอบ) → ลองซ้ำครั้งเดียวพอ
+// คำสั่งที่ต้องอ่าน Base-out/Base-in
+const HEAVY_ACTIONS = { init:1, data:1, dashinit:1, expected:1, mallstatus:1, checkhistory:1, recentchecks:1, unmatched:1 };
+
+function apiOnce(params, cb, timeout){
   const name = 'jsonp_' + Math.floor(Math.random()*1e9) + '_' + (api._n=(api._n||0)+1);
   const s = document.createElement('script');
   let done = false;
@@ -614,18 +622,21 @@ function apiOnce(params, cb){
   const qs = Object.keys(params).map(k=>encodeURIComponent(k)+'='+encodeURIComponent(params[k])).join('&');
   s.src = API_URL + '?' + qs + '&callback=' + name;
   document.body.appendChild(s);
-  setTimeout(()=>{ if(!done){ done=true; cleanup(); cb('หมดเวลาเชื่อมต่อ'); } }, API_TIMEOUT);
+  setTimeout(()=>{ if(!done){ done=true; cleanup(); cb('หมดเวลาเชื่อมต่อ'); } }, timeout || API_TIMEOUT);
 }
 // จับเวลาคำขอล่าสุด ไว้บอกผู้ใช้ว่า "รอเซิร์ฟเวอร์" หรือ "เครื่องช้า"
 let LAST_MS = { wait: 0, bytes: 0 };
 function api(params, cb){
   const t0 = Date.now();
-  let left = API_RETRY;
+  const heavy = !!HEAVY_ACTIONS[params.action];
+  const tmo = heavy ? API_TIMEOUT_HEAVY : API_TIMEOUT;
+  let left = heavy ? API_RETRY_HEAVY : API_RETRY;
   const go = ()=> apiOnce(params, (err, res)=>{
     if(!err){ LAST_MS.wait = Date.now() - t0; try{ LAST_MS.bytes = JSON.stringify(res).length; }catch(e){ LAST_MS.bytes = 0; } }
     if(err && left > 0){ left--; setTimeout(go, 1200); return; }   // พลาด = ยิงใหม่เงียบๆ ผู้ใช้ไม่ต้องกดเอง
+    if(err === 'หมดเวลาเชื่อมต่อ' && heavy) err = 'เซิร์ฟเวอร์ใช้เวลานานผิดปกติ — ลองใหม่อีกครั้ง';
     cb(err, res);
-  });
+  }, tmo);
   go();
 }
 
