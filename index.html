@@ -442,6 +442,7 @@
           <div class="menupop hidden" id="cMenu">
             <button data-act="reset">🔄 เริ่มใหม่ <span>ล้างการนับรอบนี้ทั้งหมด</span></button>
             <button data-act="addmall" class="hidden" id="cAddMall">➕ เปิดห้าง <span>เพิ่มห้างใหม่เข้าระบบ</span></button>
+            <button data-act="basefill" class="hidden" id="cBaseFill">📥 ตั้งเบสจากยอดในระบบ <span>กรอกทุกช่องด้วยยอดที่จ่ายเข้าห้าง — ใช้ตอนเพิ่งส่งของเข้า ยังไม่เคยขาย</span></button>
           </div>
         </div>
       </div>
@@ -1459,7 +1460,54 @@ function setupCheck(){
     $('cMenu').classList.add('hidden');
     if(b.dataset.act === 'reset') askReset();
     if(b.dataset.act === 'addmall') openAddMall();
+    if(b.dataset.act === 'basefill') askBaseFill();
   };
+  // ปุ่มนี้โผล่เฉพาะ admin + โหลดรายการแล้ว + เป็นห้างที่ "ยังไม่เคยตั้งเบส" เท่านั้น
+  window.updateBaseFillBtn = function(){
+    const b = $('cBaseFill'); if(!b) return;
+    const ok = DATA.role === 'admin' && CHK.items.length > 0 && !CHK.hasBaseline;
+    b.classList.toggle('hidden', !ok);
+  };
+
+  // ===== ตั้งเบสจากยอดในระบบ (ใช้ตอนเปิดห้างใหม่ที่เพิ่งส่งของเข้า ยังไม่เคยขาย) =====
+  // กรอกทุกช่องด้วยยอด "ควรมี" ที่ระบบคำนวณจากใบจ่าย/รับ = เหมือนไปนับแล้วเจอครบตามบัญชี
+  // ⚠️ ไม่บันทึกให้ทันที — แค่กรอกให้ ผู้ใช้ยังต้องตรวจและกดบันทึกเอง (แก้ทีละช่องได้ก่อน)
+  function askBaseFill(){
+    if(!CHK.items.length){ $('cStatus').textContent = 'โหลดรายการก่อน'; return; }
+    if(CHK.hasBaseline){
+      showConfirm(`ห้างนี้ตั้งเบสไปแล้ว
+ปุ่มนี้ใช้ได้เฉพาะห้างที่ยังไม่เคยตั้งเบสเท่านั้น`, ()=>{},
+        { icon:'ℹ️', title:'ใช้กับห้างนี้ไม่ได้', okText:'เข้าใจแล้ว' });
+      return;
+    }
+    const list = CHK.items.filter(it=>!it.added && (Number(it.expected)||0) > 0);
+    if(!list.length){ $('cStatus').textContent = 'ไม่มีรายการที่มียอดในระบบ'; return; }
+    const sku = list.length;
+    const qty = list.reduce((t,it)=>t + (Number(it.expected)||0), 0);
+    const already = CHK.items.filter(hasCount).length;
+
+    const msg = `${CHK.mall}
+
+จะกรอกให้ ${fmt(sku)} รุ่น รวม ${fmt(qty)} ชิ้น
+เท่ากับยอดที่จ่ายเข้าห้างทั้งหมด (เหมือนไปนับแล้วเจอครบตามบัญชี)`
+      + (already ? `
+
+⚠️ ตัวเลขที่กรอกไว้แล้ว ${already} ช่อง จะถูกเขียนทับ` : '')
+      + `
+
+❗ ใช้เฉพาะกรณี "เพิ่งส่งของเข้าห้าง ยังไม่เคยขาย" เท่านั้น
+ถ้าห้างนี้ขายไปแล้ว เบสจะสูงเกินจริง และของที่ขายไปจะกลายเป็น "หาย" ในรอบถัดไป
+
+กรอกให้แล้วยังแก้ทีละช่องได้ ก่อนกดบันทึก`;
+
+    showConfirm(msg, ()=>{
+      list.forEach(it=>{ CHK.counted[it.qr] = Number(it.expected)||0; });
+      saveDraft(); renderCheckList();
+      $('cStatus').style.color = '#0b8043';
+      $('cStatus').innerHTML = `✅ <b>กรอกให้แล้ว ${fmt(sku)} รุ่น รวม ${fmt(qty)} ชิ้น</b><br>ตรวจอีกครั้งแล้วกด <b>บันทึก</b> เพื่อตั้งเบส`;
+    }, { icon:'📥', title:'ตั้งเบสจากยอดในระบบ', okText:'กรอกให้เลย' });
+  }
+
   // เริ่มใหม่ = ล้างงานที่กรอกค้าง → ต้องถามยืนยันเสมอ (กันกดผิดแล้วงานหาย)
   function askReset(){
     const filled = (CHK.items||[]).filter(hasCount).length;
@@ -1568,6 +1616,7 @@ function resetCheck(){
   clearDraft(CHK.mall);  // กดเริ่มใหม่ = ทิ้งร่างของห้างนี้
   hideStale();
   CHK = { items: [], counted: {}, notes: {}, mall: '', hasBaseline: false, money: false };
+  if(window.updateBaseFillBtn) updateBaseFillBtn();
   $('cMall').value = '';
   $('cDate').value = todayStr();
   $('cPanel').classList.add('hidden');
@@ -1623,6 +1672,7 @@ function applyExpected(mall, res, fromCache){
       : `<span class="badge base">เช็คครั้งแรก = ตั้งเบส</span> <span style="font-size:12px;color:var(--muted)">· จ่าย/รับมากระทบรอบถัดไป</span>`;
     $('cPanel').classList.remove('hidden');
     renderCheckList();
+    if(window.updateBaseFillBtn) updateBaseFillBtn();
     // กู้คืนร่างที่กรอกค้างไว้ (ถ้ามี)
     const draft = loadDraft(mall);
     if(draft){
