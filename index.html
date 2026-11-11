@@ -371,13 +371,6 @@
 
     <div class="cards" id="cards"></div>
 
-    <!-- ค้นหาสินค้าข้ามห้าง — ใช้ข้อมูลที่โหลดมาแล้ว (DATA.records + PRODUCTS) ไม่ยิงเซิร์ฟเวอร์เพิ่ม -->
-    <div class="panel">
-      <h3>🔎 ค้นหาสินค้า — ตอนนี้อยู่ห้างไหนบ้าง</h3>
-      <input id="xsQ" placeholder="พิมพ์ชื่อสินค้า หรือ QR code">
-      <div id="xsOut"><div class="xshint">พิมพ์อย่างน้อย 2 ตัวอักษร · ยอดที่แสดงเป็น <b>ยอดสะสมทั้งหมด (จ่าย − รับ)</b> ไม่อิงช่วงวันที่ด้านบน</div></div>
-    </div>
-
     <div id="mallStatus"></div>
 
     <div class="panel">
@@ -464,6 +457,13 @@
 
   <!-- ===== VIEW: รายงานเช็ค ===== -->
   <div id="viewHist" class="wrap hidden">
+    <!-- ค้นหาสินค้าข้ามห้าง (admin + staff) — admin ใช้ข้อมูลที่โหลดมาแล้ว
+         ส่วน staff โหลดตอนกดค้นครั้งแรกเท่านั้น เพื่อไม่ให้ล็อกอินช้าลง -->
+    <div class="panel hidden" id="xsPanel">
+      <h3>🔎 ค้นหาสินค้า — ตอนนี้อยู่ห้างไหนบ้าง</h3>
+      <input id="xsQ" placeholder="พิมพ์ชื่อสินค้า หรือ QR code">
+      <div id="xsOut"></div>
+    </div>
     <!-- เตือนห้างที่ค้างไม่ได้เช็คนาน — ใช้วันที่เช็คล่าสุดที่โหลดมาตอนล็อกอินแล้ว ไม่ยิงเซิร์ฟเวอร์เพิ่ม -->
     <div id="odBox" class="hidden"></div>
     <div class="scanbox">
@@ -788,6 +788,11 @@ function startApp(){
   });
   // ปุ่มโหลดข้อมูลล่าสุด ใช้กับหน้ารายงานเป็นหลัก → โชว์เฉพาะคนที่เข้าหน้ารายงานได้
   $('btnRefresh').parentElement.style.display = allowed.indexOf('dash') >= 0 ? '' : 'none';
+  // ช่องค้นหาสินค้าข้ามห้าง — admin กับ staff เท่านั้น
+  if($('xsPanel') && (DATA.role === 'admin' || DATA.role === 'staff')){
+    $('xsPanel').classList.remove('hidden');
+    xsHint(XS_IDLE);
+  }
   switchView(allowed[0]); // เปิดหน้าแรกที่เข้าได้
   // ยอดกระทบ + เช็คล่าสุด มากับคำสั่ง init แล้ว → แสดงได้เลย ไม่ต้องยิง API ซ้ำ
   if(allowed.indexOf('dash') >= 0){
@@ -982,16 +987,47 @@ function setupXSearch(){
 }
 
 function xsHint(msg){ $('xsOut').innerHTML = `<div class="xshint">${msg}</div>`; }
+const XS_IDLE = `พิมพ์อย่างน้อย ${XS_MIN} ตัวอักษร · ยอดที่แสดงเป็น <b>ยอดสะสมทั้งหมด (จ่าย − รับ)</b> ของทุกห้างรวมกัน`;
+
+// ===== คลังข้อมูลของช่องค้นหา =====
+// admin: มี DATA.records มาตั้งแต่ล็อกอินอยู่แล้ว → ใช้ได้ทันที
+// staff: ตอนล็อกอิน "ไม่ได้" โหลดข้อมูลก้อนนี้มา (ตั้งใจ เพื่อให้ล็อกอินเร็ว 4-5 วิ)
+//        → โหลดตอนกดค้นครั้งแรกครั้งเดียว แล้วเก็บไว้ใช้ทั้งรอบการใช้งาน
+let XS_RECS = null;        // ข้อมูลที่โหลดมาเอง (staff)
+let XS_LOADING = false;
+let XS_PENDING = false;    // พิมพ์ค้างไว้ระหว่างรอโหลด → โหลดเสร็จค่อยค้นให้
+
+function xsRecords(){
+  if (DATA.records && DATA.records.length) return DATA.records;   // admin
+  return XS_RECS;                                                 // staff (null = ยังไม่โหลด)
+}
+
+function xsLoadThenSearch(){
+  if(XS_LOADING){ XS_PENDING = true; return; }
+  XS_LOADING = true; XS_PENDING = false;
+  xsHint('⏳ กำลังโหลดข้อมูลสินค้าทุกห้าง (ครั้งแรกครั้งเดียว อาจใช้เวลา 10-20 วินาที)…');
+  api({user:CRED.user, pass:CRED.pass, action:'data'}, (err,res)=>{
+    XS_LOADING = false;
+    if(err || !res || !res.ok || !res.records){
+      XS_RECS = null;
+      xsHint(`<span style="color:#c0392b">โหลดไม่สำเร็จ — ${esc(err || (res&&res.error) || 'ลองพิมพ์ใหม่อีกครั้ง')}</span>`);
+      return;
+    }
+    XS_RECS = res.records;
+    if(res.products && !(PRODUCTS||[]).length) PRODUCTS = res.products;
+    runXSearch();
+    if(XS_PENDING){ XS_PENDING = false; runXSearch(); }
+  });
+}
 
 function runXSearch(){
   const box = $('xsOut'); if(!box) return;
   const q = ($('xsQ').value||'').trim().toLowerCase();
-  if(q.length < XS_MIN){
-    xsHint(`พิมพ์อย่างน้อย ${XS_MIN} ตัวอักษร · ยอดที่แสดงเป็น <b>ยอดสะสมทั้งหมด (จ่าย − รับ)</b> ไม่อิงช่วงวันที่ด้านบน`);
-    return;
-  }
-  const recs = DATA.records || [];
-  if(!recs.length){ xsHint('ยังไม่มีข้อมูล — กดปุ่ม 🔄 โหลดข้อมูลล่าสุด ก่อน'); return; }
+  if(q.length < XS_MIN){ if(!XS_LOADING) xsHint(XS_IDLE); return; }
+
+  const recs = xsRecords();
+  if(!recs){ xsLoadThenSearch(); return; }          // staff ค้นครั้งแรก → โหลดก่อน
+  if(!recs.length){ xsHint('ยังไม่มีข้อมูลจ่าย/รับในระบบ'); return; }
 
   // 1) หา QR ที่ตรงกับคำค้น — จากชื่อสินค้าในชีท Price หรือพิมพ์เลข QR มาตรงๆ
   const name = {};
