@@ -199,19 +199,22 @@
   #healthBar ul{margin:6px 0 0;padding-left:20px}
   #healthBar li{margin:3px 0}
   /* ===== กระดิ่งเตือนห้างค้าง — ลอยอยู่มุมขวา ไม่กินพื้นที่หน้าจอ ===== */
-  #odBell{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;z-index:55;width:52px;height:52px;border-radius:50%;
+  #odBell{position:fixed;left:14px;top:50%;transform:translateY(-50%);z-index:55;width:52px;height:52px;border-radius:50%;
           border:0;background:#c0392b;color:#fff;font-size:23px;cursor:pointer;display:none;
           align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,.3)}
   #odBell.show{display:flex}
   #odBell.lv-due{background:#d4a017}
-  #odBell:active{transform:translateX(-50%) scale(.94)}
+  #odBell:active{transform:translateY(-50%) scale(.94)}
   #odBell .n{position:absolute;top:-3px;right:-3px;min-width:21px;height:21px;border-radius:11px;
              background:#fff;color:#c0392b;font-size:11px;font-weight:800;padding:0 5px;
              display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.25)}
   #odBell.lv-due .n{color:#8a6500}
-  #odPop{position:fixed;left:50%;transform:translateX(-50%);bottom:82px;z-index:56;width:min(380px,calc(100vw - 28px));
-         max-height:min(62vh,520px);overflow:auto;display:none;border-radius:12px;
+  /* ป๊อปอัปกางออกทางขวาของกระดิ่ง — กระดิ่งยังเห็นอยู่ กดซ้ำเพื่อปิดได้ */
+  #odPop{position:fixed;left:78px;top:50%;transform:translateY(-50%);z-index:56;width:min(380px,calc(100vw - 92px));
+         max-height:min(70vh,560px);overflow:auto;display:none;border-radius:12px;
          box-shadow:0 8px 28px rgba(0,0,0,.28)}
+  /* จอแคบ (มือถือ) — กางเต็มความกว้างแทน ไม่งั้นชื่อห้างจะบีบจนอ่านไม่ออก */
+  @media (max-width:560px){ #odPop{left:14px;width:calc(100vw - 28px)} }
   #odPop.show{display:block}
   #odPopBg{position:fixed;inset:0;z-index:54;display:none;background:rgba(0,0,0,.18)}
   #odPopBg.show{display:block}
