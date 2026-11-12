@@ -177,6 +177,9 @@
     .chkrow .sold{width:36px;font-size:12px}
     .zeroBtn{padding:0 5px;font-size:10px;height:30px}
     .noteBtn,.delBtn{width:30px;height:30px}
+    /* ตัวเลขมูลค่าหลักล้านยาวเกินการ์ดบนจอแคบ → ย่อลงนิดนึงให้พอดี */
+    .card .val{font-size:19px}
+    .card .lbl{font-size:11.5px}
   }
   .chkrow .sold{width:60px;text-align:center;font-weight:700}
   .sold.pos{color:#c0392b} .sold.zero{color:#0b8043}
@@ -1314,21 +1317,22 @@ function renderMallStatusBox(res, mall){
   }
   const exSku = res.expectedSku!==undefined ? ` · ${fmt(res.expectedSku)} SKU` : '';
   const sdSku = res.soldSku!==undefined ? ` · ${fmt(res.soldSku)} SKU` : '';
-  // เรียงเป็นคู่: [คงเหลือจริง + มูลค่า] แล้วค่อย [ขาย/หาย + มูลค่า]
-  // (2 ตัวแรก = ยอด ณ ปัจจุบัน ไม่ขึ้นกับช่วงวันที่ / 2 ตัวหลัง = กรองตามช่วงวันที่)
+  // อธิบายความหมายไว้ใน "ป้ายของการ์ด" เลย ดีกว่าไปเขียนหมายเหตุยาวๆ ข้างบนที่คนไม่อ่าน
+  // (คำว่า "หักการนับแล้ว" ของเดิมไม่มีใครเข้าใจ — เปลี่ยนเป็นบอกสูตรตรงๆ ว่าคิดจากอะไร)
   const money = res.expectedVal!==undefined;
-  let cards = `<div class="card bal"><div class="lbl">คงเหลือจริง</div><div class="val">${fmt(res.expectedQty)}</div><div class="sub">ชิ้น (หักการนับแล้ว)${exSku}</div></div>`;
-  if(money) cards += `<div class="card money"><div class="lbl">มูลค่าคงเหลือจริง</div><div class="val">${fmtM(res.expectedVal)}</div><div class="sub">บาท</div></div>`;
-  cards += `<div class="card sold" style="border-color:#c0392b"><div class="lbl">ขาย/หาย (จากการเช็ค)</div><div class="val" style="color:#c0392b">${fmt(res.soldQty)}</div><div class="sub">ชิ้น (ประมาณ)${sdSku}</div></div>`;
-  if(money) cards += `<div class="card money" style="border-color:#c0392b"><div class="lbl">มูลค่าขาย/หาย สะสม</div><div class="val" style="color:#c0392b">${fmtM(res.soldVal)}</div><div class="sub">บาท</div></div>`;
+  let cards = `<div class="card bal"><div class="lbl">คงเหลือจริง — ของที่ควรอยู่ที่ห้างตอนนี้</div><div class="val">${fmt(res.expectedQty)}</div><div class="sub">ชิ้น${exSku}<br><span style="opacity:.8">= ยอดที่นับได้จริงรอบล่าสุด + จ่ายเข้า − รับคืน หลังจากนั้น</span></div></div>`;
+  if(money) cards += `<div class="card money"><div class="lbl">มูลค่าคงเหลือจริง</div><div class="val">${fmtM(res.expectedVal)}</div><div class="sub">บาท<br><span style="opacity:.8">= คงเหลือจริง × ราคาต่อชิ้น</span></div></div>`;
+  cards += `<div class="card sold" style="border-color:#c0392b"><div class="lbl">ขาย/หาย — หายไประหว่าง 2 รอบเช็ค</div><div class="val" style="color:#c0392b">${fmt(res.soldQty)}</div><div class="sub">ชิ้น${sdSku}<br><span style="opacity:.8">= ขายออกไป หรือของหาย (ระบบแยกไม่ได้) · เฉพาะช่วงวันที่เลือก</span></div></div>`;
+  if(money) cards += `<div class="card money" style="border-color:#c0392b"><div class="lbl">มูลค่าขาย/หาย</div><div class="val" style="color:#c0392b">${fmtM(res.soldVal)}</div><div class="sub">บาท<br><span style="opacity:.8">= ขาย/หาย × ราคาต่อชิ้น</span></div></div>`;
   const title = res.all
     ? (res.picked
         ? `📦 กระทบเช็ค — ${res.picked} ห้างที่เลือก (มีข้อมูลเช็ค ${res.mallChecked} ห้าง)`
         : `📦 กระทบเช็ค — รวมทุกห้าง (เช็คแล้ว ${res.mallChecked} ห้าง)`)
     : `📦 กระทบเช็คล่าสุด (${fmtDate(res.lastCheckDate)})`;
-  // อธิบายให้ชัด: 2 การ์ดแรกเป็นยอด ณ ปัจจุบัน (ไม่กรองวัน) / 2 การ์ดหลังกรองตามช่วงวันที่
-  const scope = res.all ? (res.picked ? ' ของห้างที่เลือก' : ' ทุกห้างที่เคยเช็ค') : 'ของห้างนี้';
-  const note = `<b>คงเหลือ/มูลค่า</b> = ยอดปัจจุบัน${scope} — <u>ไม่ขึ้นกับช่วงวันที่</u> · <b>ขาย/หาย</b> = เฉพาะรอบเช็คในช่วงวันที่เลือก`;
+  // เดิมมีหมายเหตุยาว 1 บรรทัดข้างบน แต่ user บอกว่าอ่านแล้วไม่เข้าใจเพิ่ม
+  // → ย้ายคำอธิบายไปไว้ในป้ายของแต่ละการ์ดแทน (อ่านตรงจุดที่เห็นตัวเลข) เหลือแค่บอกช่วงวันที่
+  const scope = res.all ? (res.picked ? 'ของห้างที่เลือก' : 'ทุกห้างที่เคยเช็ค') : 'ของห้างนี้';
+  const note = `ยอดคงเหลือ = ${scope} ณ ตอนนี้ <u>ไม่ขึ้นกับช่วงวันที่ด้านบน</u>`;
   el.innerHTML = `<div class="panel"><h3>${title}</h3><div class="statusnote">${note}</div><div class="cards">${cards}</div></div>`;
 }
 
@@ -2193,7 +2197,7 @@ function renderRecentInHist(){
   const showMoney = rows.some(r=>r.soldVal!==undefined);
   let h = `<div class="panel"><h3>🕘 สถานะงานล่าสุด ${rows.length} อันดับ (ทุกห้าง)</h3>
     <div style="font-size:12px;color:var(--muted);margin:-4px 0 10px">แตะที่แถวเพื่อดูประวัติรายตัวของห้างนั้น</div>
-    <div class="tblwrap"><table><tr><th>วันที่</th><th>ห้าง</th><th>ประเภท</th><th>ผู้เช็ค</th><th>รายการ</th>${showSold?'<th>ขาย/หาย</th>':''}${showMoney?'<th>มูลค่า</th>':''}</tr>`;
+    <div class="tblwrap"><table><tr><th>วันที่</th><th>ห้าง</th><th>ประเภท</th><th>ผู้เช็ค</th><th>นับ (SKU)</th>${showSold?'<th>ขาย/หาย (ชิ้น)</th>':''}${showMoney?'<th>มูลค่า</th>':''}</tr>`;
   rows.forEach(r=>{
     const badge = r.type==='base' ? '<span class="badge base">ตั้งเบส</span>' : '<span class="badge check">รอบตรวจ</span>';
     h += `<tr class="histRecentRow" data-mall="${r.mall}" style="cursor:pointer"><td>${fmtDate(r.date)}</td><td class="k">${r.mall}</td><td>${badge}</td><td>${r.user||''}</td><td>${fmt(r.itemCount)}</td>`
@@ -2301,8 +2305,16 @@ function renderHist(){
   $('hRounds').innerHTML = rounds.map((r,i)=>{
     const isBase = r.type==='base';
     const badge = isBase ? '<span class="badge base">ตั้งเบส</span>' : '<span class="badge check">รอบตรวจ</span>';
-    const soldHtml = isBase ? '<span style="color:var(--muted);font-size:13px">เบสตั้งต้น</span>'
-      : `<div class="q">−${fmt(r.soldQty)}</div>${HIST.money?`<div class="m">${fmtM(r.soldVal||0)} บาท</div>`:''}${r.overQty?`<div class="m" style="color:#0b8043">เกิน +${fmt(r.overQty)}</div>`:''}`;
+    // นับจำนวน "ชิ้น" กับ "SKU" แยกกันให้ชัด — คำว่า "รายการ" เดิมกำกวม อ่านแล้วไม่รู้ว่าอันไหน
+    const cntQty  = r.items.reduce((t,it)=>t + (Number(it.counted)||0), 0);   // ชิ้นที่นับได้ทั้งรอบ
+    const soldSku = r.items.filter(it=>(Number(it.sold)||0) > 0).length;      // กี่รุ่นที่ขาย/หาย
+    const overSku = r.items.filter(it=>(Number(it.sold)||0) < 0).length;      // กี่รุ่นที่พบเกิน
+    const soldHtml = isBase
+      ? `<div class="q" style="color:#b9600f">${fmt(cntQty)}</div><div class="m">ชิ้น · ตั้งเบส</div>`
+      : `<div class="q">−${fmt(r.soldQty)}</div>`
+        + `<div class="m">ชิ้น · ${fmt(soldSku)} SKU</div>`
+        + (HIST.money ? `<div class="m">${fmtM(r.soldVal||0)} บาท</div>` : '')
+        + (r.overQty ? `<div class="m" style="color:#0b8043">พบเกิน +${fmt(r.overQty)} ชิ้น · ${fmt(overSku)} SKU</div>` : '');
     // คอลัมน์ "รอบก่อน" + "จ่าย/รับ" ใส่ไว้เสมอแต่ซ่อนด้วย CSS — กดปุ่ม ⇄ ถึงโผล่
     // (ค่ามาจาก it.prev / it.move ที่ GAS ส่งมาพร้อมกันอยู่แล้ว ไม่ได้ยิงเซิร์ฟเวอร์เพิ่ม)
     // GAS เวอร์ชันเก่าไม่ส่ง prev/move มา → ไม่ต้องโชว์ปุ่มเทียบ (กันโชว์เลข 0 หลอกตา)
@@ -2323,7 +2335,7 @@ function renderHist(){
     }).join('');
     return `<div class="roundcard">
       <div class="roundhd" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.arrow').textContent=this.nextElementSibling.classList.contains('open')?'▲':'▼'">
-        <div class="dt"><b>${fmtDate(r.date)}</b> ${badge}<span>โดย ${r.user} · ${r.itemCount} รายการ</span></div>
+        <div class="dt"><b>${fmtDate(r.date)}</b> ${badge}<span>โดย ${r.user} · นับ ${fmt(r.itemCount)} SKU (${fmt(cntQty)} ชิ้น)</span></div>
         <div class="sv">${soldHtml}</div>
         ${(isBase||!hasCmp)?'':`<button class="cmpbtn" title="เทียบกับรอบก่อนหน้า" onclick="event.stopPropagation();toggleCmp(this)">⇄ เทียบรอบก่อน</button>`}
         <button onclick="event.stopPropagation();exportRoundCSV('${r.roundId}')" title="โหลด Excel รอบนี้" style="border:0;background:#eef1f5;border-radius:7px;width:34px;height:34px;cursor:pointer;font-size:14px;flex:0 0 auto">⬇️</button>
@@ -2331,7 +2343,7 @@ function renderHist(){
       </div>
       <div class="rounddetail">
         <div class="ditem" style="font-weight:700;color:var(--muted);font-size:11px">
-          <div class="dn">สินค้า</div>${(isBase||!hasCmp)?'':'<div class="dp">รอบก่อน</div><div class="dm">จ่าย/รับ</div>'}${isBase?'':'<div class="dc">ควรมี</div>'}<div class="dc">นับได้</div>${isBase?'':'<div class="dsold">ขาย</div>'}
+          <div class="dn">สินค้า <span style="font-weight:400">(ตัวเลขทั้งหมด = ชิ้น)</span></div>${(isBase||!hasCmp)?'':'<div class="dp">รอบก่อน</div><div class="dm">จ่าย/รับ</div>'}${isBase?'':'<div class="dc">ควรมี</div>'}<div class="dc">นับได้</div>${isBase?'':'<div class="dsold">ขาย/หาย</div>'}
         </div>
         ${detail}
       </div>
