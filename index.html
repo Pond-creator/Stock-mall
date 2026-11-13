@@ -2414,16 +2414,20 @@ function renderUnmatched(r){
     : '<div style="color:#8e1b24;font-weight:600">⚠️ มี remark ที่ชนหลายห้าง — ต้องแก้ keyword ในชีท Config</div>';
   // แยก "น่าสงสัย — คล้ายชื่อห้าง" ออกจากกลุ่มหาห้างไม่เจอ (ฝั่ง GAS ติดธง near มาให้)
   const all  = r.unmatched || [];
-  const near = all.filter(x=>x.near);
+  const near = all.filter(x=>x.near && !x.note);     // ยังไม่ตรวจ = เหลือง
+  const done = all.filter(x=>x.near && x.note);      // เขียนคอมเมนต์ในชีทแล้ว = ตรวจแล้ว
   const rest = all.filter(x=>!x.near);
   const nNear = (r.nNear !== undefined) ? r.nNear : near.length;
+  const nDone = (r.nDone !== undefined) ? r.nDone : done.length;
   $('umOut').innerHTML = okLine
     + grp('🔴 ชนหลายห้าง (ต้องแก้)', 'red', r.ambiguous||[], r.nAmbiguous, x=>'→ '+x.malls)
     + grp('🟡 น่าสงสัย — คล้ายชื่อห้าง ตรวจดูว่าควรเติม keyword ไหม', 'yellow', near, nNear, x=>'→ คล้าย '+x.near)
+    + grp('✔️ ตรวจแล้ว (เขียนคอมเมนต์ไว้ในชีท Unmatched)', 'gray', done, nDone, x=>'· '+x.note)
     + grp('⚪ ตั้งใจกันออกจากระบบหลัก (Event ฯลฯ)', 'gray', r.excluded||[], r.nExcluded, x=>'· เดิมจะเข้า '+x.mall)
-    + grp('หาห้างไม่เจอ (ส่วนใหญ่เป็นช่องทางอื่น ไม่ใช่ห้าง)', 'plain', rest, Math.max(0, (r.nUnmatched||0) - nNear))
+    + grp('หาห้างไม่เจอ (ส่วนใหญ่เป็นช่องทางอื่น ไม่ใช่ห้าง)', 'plain', rest, Math.max(0, (r.nUnmatched||0) - nNear - nDone))
     + '<div class="xshint">ตัวเลข <b>แถว</b> = จำนวนรายการ · <b>ชิ้น</b> = จำนวนสินค้ารวม (คนละตัวกัน)'
-    + '<br>แถวเหลืองในชีท <b>Unmatched</b> ก็คือกลุ่มเดียวกันนี้</div>';
+    + '<br>แถวเหลืองในชีท <b>Unmatched</b> ก็คือกลุ่มเดียวกันนี้'
+    + '<br>ดูแล้วไม่ต้องเตือนอีก = <b>พิมพ์คอมเมนต์ในช่อง D ของชีท Unmatched</b> (ลบออกเมื่อไหร่ก็กลับมาเตือน)</div>';
 }
 
 function renderHist(){
