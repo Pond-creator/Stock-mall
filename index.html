@@ -509,6 +509,11 @@
         <div><label>ถึงวันที่</label><input id="hTo" type="date"></div>
       </div>
       <button class="bigbtn ghost" id="hLoad" style="margin-top:10px">🔄 โหลดประวัติใหม่</button>
+      <div class="btnhint" style="margin-top:8px">
+        <div><b>⬇️ Excel (ปุ่มบน)</b> = สรุป <u>ต่อสินค้า</u> — รุ่นไหนเหลือเท่าไหร่ หายรวมกี่ชิ้น</div>
+        <div><b>⬇️ ในการ์ดแต่ละรอบ</b> = ผล<u>รอบนั้นรอบเดียว</u> — มีผู้ตรวจ ควรมี/นับได้ และหมายเหตุ</div>
+        <div style="margin-top:3px">ทั้งสองไฟล์มีคำอธิบายกำกับท้ายไฟล์ · อยากได้ยอดตั้งแต่เปิดห้าง = เว้นช่องวันที่ว่างไว้</div>
+      </div>
       <div id="hStatus" style="font-size:13px;color:var(--muted);margin-top:8px;text-align:center"></div>
     </div>
     <div id="hPanel" class="hidden">
@@ -2066,6 +2071,40 @@ function setupHist(){
 }
 
 // โหลด CSV "สรุปต่อสินค้า" ของห้างที่เลือก (ยอดจริงหลังกระทบ — 1 SKU = 1 แถว)
+const CSV_BOM = '﻿';   // ใส่หน้าไฟล์ ให้ Excel อ่านภาษาไทยออก
+// ===== ตัวช่วยสำหรับไฟล์ที่โหลดออกไป =====
+// ไฟล์ CSV เดินทางไปไกลจากแอป คนเปิดทีหลังไม่มีบริบทว่าตัวเลขคิดจากช่วงไหน
+// → ใส่คำอธิบาย "ท้ายไฟล์" ไม่ใช่หัวไฟล์ เพราะหัวตารางต้องอยู่แถวแรก ไม่งั้น Excel กรอง/Pivot ไม่ได้
+// แบบสั้น — ใช้ในหัวคอลัมน์ ไม่ให้วงเล็บซ้อนวงเล็บ
+function rangeShort(from, to){
+  if(!from && !to) return 'ทุกรอบ';
+  if(from && to)   return fmtDate(from) + '-' + fmtDate(to);
+  if(from)         return 'ตั้งแต่ ' + fmtDate(from);
+  return 'ถึง ' + fmtDate(to);
+}
+function rangeText(from, to){
+  if(!from && !to) return 'ทั้งหมด (ไม่ได้กรองวันที่)';
+  if(from && to)   return fmtDate(from) + ' ถึง ' + fmtDate(to);
+  if(from)         return 'ตั้งแต่ ' + fmtDate(from) + ' เป็นต้นไป';
+  return 'ถึง ' + fmtDate(to);
+}
+function rangeFileTag(from, to){
+  if(!from && !to) return 'ทั้งหมด';
+  return (from || 'เริ่มต้น') + '_ถึง_' + (to || 'ล่าสุด');
+}
+function nowText(){
+  const d = new Date(), z = n => String(n).padStart(2,'0');
+  return z(d.getDate()) + '/' + z(d.getMonth()+1) + '/' + d.getFullYear() + ' ' + z(d.getHours()) + ':' + z(d.getMinutes());
+}
+function saveCSV(lines, filename){
+  const blob = new Blob([CSV_BOM + lines.join('\r\n')], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+
 function exportMallCSV(){
   const mall = $('hMall').value;
   if(!mall){ $('hStatus').textContent='เลือกห้างก่อน'; return; }
@@ -2092,7 +2131,10 @@ function exportMallCSV(){
       if(!rows.length){ alert('ยังไม่มีข้อมูล (ห้างนี้อาจยังไม่ได้ตั้งเบส)'); return; }
 
       const esc = v => { v=String(v==null?'':v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
-      const head=['สถานที่','รหัส QR','ชื่อสินค้า','คงเหลือปัจจุบัน','ขาย/หาย รวม'];
+      const today = nowText().split(' ')[0];
+      const rg = rangeText(from, to);
+      // หัวคอลัมน์บอกช่วงเวลาในตัวเอง อ่านแล้วไม่ต้องเดา
+      const head=['สถานที่','รหัส QR','ชื่อสินค้า','คงเหลือปัจจุบัน (ณ '+today+')','ขาย/หาย รวม ('+rangeShort(from,to)+')'];
       if(money) head.push('มูลค่าคงเหลือ(บาท)','มูลค่าขาย/หาย(บาท)');
       const lines=[head.join(',')];
       rows.forEach(r=>{
@@ -2100,13 +2142,18 @@ function exportMallCSV(){
         if(money) row.push((r.cur*r.price), (soldVal[r.qr]||0));
         lines.push(row.map(esc).join(','));
       });
-      const csv='﻿'+lines.join('\r\n');
-      const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement('a');
-      a.href=url; a.download=`สรุปสต็อก_${mall}_${from||'all'}_${to||'all'}.csv`;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(()=>URL.revokeObjectURL(url),1000);
+      // คำอธิบายท้ายไฟล์ — หัวตารางยังอยู่แถวแรก Excel กรอง/Pivot ได้ตามปกติ
+      lines.push('');
+      [['— คำอธิบายไฟล์นี้ —',''],
+       ['ชนิดรายงาน','สรุปคงเหลือต่อสินค้า (1 แถว = 1 รุ่น รวมทุกรอบเช็ค)'],
+       ['ห้าง', mall],
+       ['ช่วงวันที่ที่เลือก', rg],
+       ['ออกรายงานเมื่อ', nowText()],
+       ['คงเหลือปัจจุบัน', 'ของที่ควรอยู่ที่ห้าง ณ ' + today + ' = ยอดที่นับได้จริงรอบล่าสุด + จ่ายเข้า − รับคืน หลังจากนั้น (ไม่ขึ้นกับช่วงวันที่)'],
+       ['ขาย/หาย รวม', 'รวมเฉพาะรอบเช็คใน "' + rg + '" · หมายถึงขายออกไป หรือของหาย (ระบบแยกไม่ได้)'],
+       ['อยากได้ยอดตั้งแต่เปิดห้าง', 'เว้นช่องจากวันที่/ถึงวันที่ ให้ว่างทั้งคู่ แล้วกดโหลดใหม่']
+      ].forEach(x=>lines.push(x.map(esc).join(',')));
+      saveCSV(lines, 'สรุปสต็อก_' + mall + '_' + rangeFileTag(from,to) + '.csv');
     });
   });
 }
@@ -2156,13 +2203,21 @@ function exportRoundCSV(roundId){
     row.push(it.note||'');
     lines.push(row.map(esc).join(','));
   });
-  const csv = '﻿' + lines.join('\r\n');
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = `StockCheck_${mall}_${r.date}_${typeTh}.csv`;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  const cntQty = r.items.reduce((t,it)=>t + (Number(it.counted)||0), 0);
+  lines.push('');
+  [['— คำอธิบายไฟล์นี้ —',''],
+   ['ชนิดรายงาน', 'ผลเช็ค 1 รอบ (1 แถว = 1 รุ่น) · ' + typeTh],
+   ['ห้าง', mall],
+   ['วันที่เช็ค', fmtDate(r.date)],
+   ['ผู้ตรวจ', r.user||''],
+   ['นับได้', r.items.length + ' รุ่น (SKU) รวม ' + cntQty + ' ชิ้น'],
+   ['ขาย/หาย', r.type==='base' ? 'ไม่มี (รอบนี้คือตั้งเบสครั้งแรก ยังไม่มีรอบก่อนให้เทียบ)'
+                               : (r.soldQty||0) + ' ชิ้น' + (r.overQty ? ' · พบเกิน ' + r.overQty + ' ชิ้น' : '')],
+   ['ควรมี คิดจาก', r.type==='base' ? '-' : 'ยอดที่นับได้รอบก่อน + จ่ายเข้า − รับคืน ระหว่าง 2 รอบ'],
+   ['ขาย/หาย คิดจาก', r.type==='base' ? '-' : 'ควรมี − นับได้ (ค่าติดลบ = พบเกิน)'],
+   ['ออกรายงานเมื่อ', nowText()]
+  ].forEach(x=>lines.push(x.map(esc).join(',')));
+  saveCSV(lines, 'ผลเช็ค_' + mall + '_' + r.date + '_' + typeTh + '.csv');
 }
 
 // ====== ไม่ได้เลือกห้าง → โชว์ "สถานะงานล่าสุด 20 อันดับ" รวมทุกห้าง ======
