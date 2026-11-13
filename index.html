@@ -309,6 +309,7 @@
   .umrow .umk{flex:1;min-width:0;word-break:break-word}
   .umrow .umn{white-space:nowrap;font-size:11.5px;color:var(--muted)}
   .umrow.red{background:#fde7e9} .umrow.gray{background:#efefef} .umrow.plain{background:#f6f7f9}
+  .umrow.yellow{background:#fff3a3}
 </style>
 </head>
 <body>
@@ -2411,11 +2412,18 @@ function renderUnmatched(r){
   const okLine = r.nAmbiguous===0
     ? '<div style="color:#245c17;font-weight:600">✅ ไม่มี remark ที่ชนหลายห้าง</div>'
     : '<div style="color:#8e1b24;font-weight:600">⚠️ มี remark ที่ชนหลายห้าง — ต้องแก้ keyword ในชีท Config</div>';
+  // แยก "น่าสงสัย — คล้ายชื่อห้าง" ออกจากกลุ่มหาห้างไม่เจอ (ฝั่ง GAS ติดธง near มาให้)
+  const all  = r.unmatched || [];
+  const near = all.filter(x=>x.near);
+  const rest = all.filter(x=>!x.near);
+  const nNear = (r.nNear !== undefined) ? r.nNear : near.length;
   $('umOut').innerHTML = okLine
     + grp('🔴 ชนหลายห้าง (ต้องแก้)', 'red', r.ambiguous||[], r.nAmbiguous, x=>'→ '+x.malls)
+    + grp('🟡 น่าสงสัย — คล้ายชื่อห้าง ตรวจดูว่าควรเติม keyword ไหม', 'yellow', near, nNear, x=>'→ คล้าย '+x.near)
     + grp('⚪ ตั้งใจกันออกจากระบบหลัก (Event ฯลฯ)', 'gray', r.excluded||[], r.nExcluded, x=>'· เดิมจะเข้า '+x.mall)
-    + grp('หาห้างไม่เจอ (ส่วนใหญ่เป็นช่องทางอื่น ไม่ใช่ห้าง)', 'plain', r.unmatched||[], r.nUnmatched)
-    + '<div class="xshint">ตัวเลข <b>แถว</b> = จำนวนรายการ · <b>ชิ้น</b> = จำนวนสินค้ารวม (คนละตัวกัน)</div>';
+    + grp('หาห้างไม่เจอ (ส่วนใหญ่เป็นช่องทางอื่น ไม่ใช่ห้าง)', 'plain', rest, Math.max(0, (r.nUnmatched||0) - nNear))
+    + '<div class="xshint">ตัวเลข <b>แถว</b> = จำนวนรายการ · <b>ชิ้น</b> = จำนวนสินค้ารวม (คนละตัวกัน)'
+    + '<br>แถวเหลืองในชีท <b>Unmatched</b> ก็คือกลุ่มเดียวกันนี้</div>';
 }
 
 function renderHist(){
