@@ -364,7 +364,7 @@
 <div id="app" class="hidden">
   <header>
     <h1>🏬 Stock Mall</h1>
-    <button id="btnTopRefresh" class="hidden" title="ดึงข้อมูลล่าสุดจากเซิร์ฟเวอร์">🔄 <span>โหลดใหม่</span></button>
+    <button id="btnTopRefresh" class="hidden" title="ดึงข้อมูลล่าสุด แล้วล้างตัวกรองในหน้ารายงานเช็ค กลับมาเหมือนเพิ่งเข้าระบบ">🔄 <span>เริ่มใหม่</span></button>
     <div class="who"><b id="whoName"></b><span id="whoRole"></span><span id="whoMs" style="opacity:.75"></span> · <a href="#" id="installLink" class="hidden" style="color:#fff">📲 ติดตั้ง</a> · <a href="#" id="logout" style="color:#fff">ออก</a></div>
   </header>
   <nav id="nav">
@@ -529,6 +529,7 @@
         <div><b>⬇️ Excel (ปุ่มบน)</b> = สรุป <u>ต่อสินค้า</u> — รุ่นไหนเหลือเท่าไหร่ หายรวมกี่ชิ้น</div>
         <div><b>⬇️ ในการ์ดแต่ละรอบ</b> = ผล<u>รอบนั้นรอบเดียว</u> — มีผู้ตรวจ ควรมี/นับได้ และหมายเหตุ</div>
         <div style="margin-top:3px">ทั้งสองไฟล์มีคำอธิบายกำกับท้ายไฟล์ · อยากได้ยอดตั้งแต่เปิดห้าง = เว้นช่องวันที่ว่างไว้</div>
+        <div style="margin-top:5px"><b>🔄 โหลดประวัติใหม่</b> = ดึงรอบเช็คของห้างนี้มาใหม่ · <b>🔄 เริ่มใหม่ (บนหัวเว็บ)</b> = ดึงข้อมูลทั้งหมด + ล้างตัวกรอง กลับมาเหมือนเพิ่งเข้าระบบ</div>
       </div>
       <div id="hStatus" style="font-size:13px;color:var(--muted);margin-top:8px;text-align:center"></div>
     </div>
@@ -845,9 +846,8 @@ function startApp(){
   $('btnRefresh').parentElement.style.display = allowed.indexOf('dash') >= 0 ? '' : 'none';
   // ปุ่มโหลดใหม่บนแถบหัว — admin กับ staff เท่านั้น
   // (user ไม่ให้เห็น กันเผลอกดโดนระหว่างนับสต็อก)
-  if($('btnTopRefresh') && (DATA.role === 'admin' || DATA.role === 'staff')){
-    $('btnTopRefresh').classList.remove('hidden');
-  }
+  TOPR_OK = (DATA.role === 'admin' || DATA.role === 'staff');
+  topRefreshApplyView();
   // ช่องค้นหาสินค้าข้ามห้าง — admin กับ staff เท่านั้น
   if($('xsPanel') && (DATA.role === 'admin' || DATA.role === 'staff')){
     $('xsPanel').classList.remove('hidden');
@@ -941,6 +941,30 @@ function refreshData(done){
 
 // ปุ่มโหลดใหม่บนแถบหัว — ใช้ refreshData() ตัวเดียวกับปุ่มเขียวของ admin
 // ⚠️ ไม่ได้รีโหลดหน้าเว็บ → ตัวเลขที่กำลังนับค้างอยู่ (CHK) ไม่ถูกแตะเลย กดได้แม้กำลังนับ
+// ปุ่ม "เริ่มใหม่" โชว์เฉพาะหน้ารายงาน/รายงานเช็ค
+// ⛔ ห้ามโชว์บนหน้าเช็คสต็อก — กัน staff/user เผลอกดโดนระหว่างนับของ
+let TOPR_OK = false;              // role อนุญาตไหม (admin/staff)
+function topRefreshApplyView(){
+  const b = $('btnTopRefresh');
+  if(!b) return;
+  const onCheck = !$('viewCheck').classList.contains('hidden');
+  b.classList.toggle('hidden', !(TOPR_OK && !onCheck));
+}
+
+// คืนหน้ารายงานเช็คกลับสถานะเริ่มต้น (เหมือนเพิ่งเข้าระบบ)
+// ⚠️ ไม่แตะหน้าเช็คสต็อกเด็ดขาด — ของที่กำลังนับค้างอยู่ต้องไม่หาย
+function resetHistView(){
+  HIST_SEQ++;                       // ทิ้งคำตอบที่ยังค้างอยู่ ไม่ให้มาทับทีหลัง
+  if($('hMall')) $('hMall').value = '';
+  if($('hFrom')) $('hFrom').value = '';
+  if($('hTo'))   $('hTo').value   = '';
+  if($('hStatus')){ $('hStatus').style.color = ''; $('hStatus').textContent = ''; }
+  if($('xsQ')){ $('xsQ').value = ''; if($('xsOut')) xsHint(XS_IDLE); }
+  OD_SEEN = false;                  // ให้กระดิ่งกลับมาเตือนอีกครั้ง
+  renderOverdue();
+  showRecentInHist();               // กลับไปโชว์งานล่าสุด 20 อันดับ (ทุกห้าง)
+}
+
 function setupTopRefresh(){
   const b = $('btnTopRefresh');
   if(!b) return;
@@ -949,9 +973,10 @@ function setupTopRefresh(){
     b.disabled = true;
     refreshData(ok=>{
       b.disabled = false;
+      if(ok) resetHistView();       // สำเร็จแล้วค่อยรีเซ็ต — ถ้าโหลดไม่ได้ ของเดิมบนจอยังอยู่
       b.classList.toggle('ok', !!ok);
-      b.innerHTML = ok ? '✅ <span>อัปเดตแล้ว</span>' : '⚠️ <span>ลองใหม่</span>';
-      setTimeout(()=>{ b.classList.remove('ok'); b.innerHTML = '🔄 <span>โหลดใหม่</span>'; }, 2500);
+      b.innerHTML = ok ? '✅ <span>เริ่มใหม่แล้ว</span>' : '⚠️ <span>ลองใหม่</span>';
+      setTimeout(()=>{ b.classList.remove('ok'); b.innerHTML = '🔄 <span>เริ่มใหม่</span>'; }, 2500);
     });
   };
 }
@@ -1201,6 +1226,7 @@ function switchView(v){
   if(v==='hist' && !$('hMall').value && !HIST.rounds.length && RECENT.length) renderRecentInHist();
   if(v==='hist') renderOverdue();   // เปิดค้างข้ามวัน ตัวเลข "กี่วันแล้ว" จะได้ไม่ค้างของเมื่อวาน
   odApplyView();                    // ออกจากหน้ารายงานเช็ค = ซ่อนกระดิ่ง + ปิดป๊อปอัป
+  topRefreshApplyView();            // เข้าหน้าเช็คสต็อก = ซ่อนปุ่มเริ่มใหม่ (กันเผลอกดตอนนับ)
 }
 function setupNav(){
   $('btnRefresh').onclick = ()=>refreshData();   // ห่อไว้ ไม่งั้น onclick จะส่ง Event เข้าไปเป็น callback
