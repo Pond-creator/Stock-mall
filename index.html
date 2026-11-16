@@ -2261,13 +2261,14 @@ function exportRoundCSV(roundId){
   const money = HIST.money;
   const esc = v => { v = String(v==null?'':v); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; };
   const typeTh = r.type==='base'?'ตั้งเบส':'รอบตรวจ';
-  const head = ['สถานที่','วันที่','ประเภท','ผู้ตรวจ','รหัส QR','ชื่อสินค้า','คงเหลือ(นับได้)','ควรมี','ขาย/หาย'];
+  // เรียง ควรมี → นับได้ → ขาย/หาย ให้ตรงกับตารางบนหน้าจอ (เดิมสลับกัน ทำให้เทียบ 2 ที่แล้วงง)
+  const head = ['สถานที่','วันที่','ประเภท','ผู้ตรวจ','รหัส QR','ชื่อสินค้า','ควรมี','นับได้','ขาย/หาย'];
   if(money) head.push('มูลค่าขาย/หาย(บาท)');
   head.push('หมายเหตุ');
   const lines = [head.join(',')];
   r.items.forEach(it=>{
-    const row = [mall, r.date, typeTh, r.user, it.qr, it.desc, it.counted,
-      (it.expected==null?'':it.expected), (it.sold==null?'':it.sold)];
+    const row = [mall, r.date, typeTh, r.user, it.qr, it.desc,
+      (it.expected==null?'':it.expected), it.counted, (it.sold==null?'':it.sold)];
     if(money) row.push(it.val==null?'':it.val);
     row.push(it.note||'');
     lines.push(row.map(esc).join(','));
