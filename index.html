@@ -1396,10 +1396,15 @@ function renderMallStatusBox(res, mall){
   if(money) cards += `<div class="card money"><div class="lbl">มูลค่าคงเหลือจริง</div><div class="val">${fmtM(res.expectedVal)}</div><div class="sub">บาท<br><span style="opacity:.8">= คงเหลือจริง × ราคาต่อชิ้น</span></div></div>`;
   cards += `<div class="card sold" style="border-color:#c0392b"><div class="lbl">ขาย/หาย — หายไประหว่าง 2 รอบเช็ค</div><div class="val" style="color:#c0392b">${fmt(res.soldQty)}</div><div class="sub">ชิ้น${sdSku}<br><span style="opacity:.8">= ขายออกไป หรือของหาย (ระบบแยกไม่ได้) · เฉพาะช่วงวันที่เลือก</span></div></div>`;
   if(money) cards += `<div class="card money" style="border-color:#c0392b"><div class="lbl">มูลค่าขาย/หาย</div><div class="val" style="color:#c0392b">${fmtM(res.soldVal)}</div><div class="sub">บาท<br><span style="opacity:.8">= ขาย/หาย × ราคาต่อชิ้น</span></div></div>`;
+  // จำนวนห้างทั้งหมด = ห้างที่เปิดใช้งานแล้วในชีท Config (DATA.malls มาพร้อมตอนล็อกอินอยู่แล้ว
+  // จึงไม่ต้องยิงเซิร์ฟเวอร์เพิ่ม) — บอกตัวหารด้วย จะได้รู้ว่าเหลืออีกกี่ห้างที่ยังไม่ได้เช็ค
+  const totalMalls = (DATA.malls || []).length;
   const title = res.all
     ? (res.picked
-        ? `📦 กระทบเช็ค — ${res.picked} ห้างที่เลือก (มีข้อมูลเช็ค ${res.mallChecked} ห้าง)`
-        : `📦 กระทบเช็ค — รวมทุกห้าง (เช็คแล้ว ${res.mallChecked} ห้าง)`)
+        ? `📦 กระทบเช็ค — ห้างที่เลือก (เช็คแล้ว ${fmt(res.mallChecked)} จาก ${fmt(res.picked)} ห้าง)`
+        : (totalMalls
+            ? `📦 กระทบเช็ค — รวมทุกห้าง (เช็คแล้ว ${fmt(res.mallChecked)} จากทั้งหมด ${fmt(totalMalls)} ห้าง)`
+            : `📦 กระทบเช็ค — รวมทุกห้าง (เช็คแล้ว ${fmt(res.mallChecked)} ห้าง)`))
     : `📦 กระทบเช็คล่าสุด (${fmtDate(res.lastCheckDate)})`;
   // เดิมมีหมายเหตุยาว 1 บรรทัดข้างบน แต่ user บอกว่าอ่านแล้วไม่เข้าใจเพิ่ม
   // → ย้ายคำอธิบายไปไว้ในป้ายของแต่ละการ์ดแทน (อ่านตรงจุดที่เห็นตัวเลข) เหลือแค่บอกช่วงวันที่
